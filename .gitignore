@@ -18,3 +18,6 @@ mcp/ti-aggregator/cache/
 # (kept here in case you ever run OpenClaw with workspace=security-lab)
 MEMORY.md
 memory/
+
+# Cron artifacts (generated)
+artifacts/cron/

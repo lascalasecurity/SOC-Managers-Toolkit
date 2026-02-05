@@ -1,0 +1,8 @@
+{
+  "name": "jarvis-secops",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "security-analyst": "node agents/security-analyst/runner.js"
+  }
+}
