@@ -1,0 +1,27 @@
+name: indicator-multi-enrich
+intent: Enrich an indicator using the local TI Aggregator (multi-source)
+inputs:
+  indicator: null
+  type: auto # ip|domain|hash|url|email|cve|auto
+  sources: [otx, greynoise, kev, abusech, virustotal]
+constraints:
+  readOnly: true
+  timeBudgetMin: 5
+plan:
+  - id: enrich
+    tool: ti-aggregator:enrich_indicator
+    params:
+      indicator: ${inputs.indicator}
+      type: ${inputs.type}
+      sources: ${inputs.sources}
+    provides: [ti]
+  - id: write
+    tool: fs-local:write_file
+    params:
+      path: artifacts/enrich_${inputs.indicator}.json
+      content: ${ti}
+outputs:
+  - artifacts/enrich_${inputs.indicator}.json
+  - report.md
+report:
+  template: indicator_multi_enrich.md

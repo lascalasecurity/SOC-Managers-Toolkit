@@ -1,0 +1,52 @@
+{
+  "servers": [
+    {
+      "name": "purple-mcp",
+      "transport": "stdio",
+      "command": "uvx",
+      "args": ["--from", "git+https://github.com/Sentinel-One/purple-mcp.git", "purple-mcp", "--mode", "stdio"],
+      "env": {
+        "PURPLEMCP_CONSOLE_TOKEN": "${PURPLEMCP_CONSOLE_TOKEN}",
+        "PURPLEMCP_CONSOLE_BASE_URL": "${PURPLEMCP_CONSOLE_BASE_URL}"
+      },
+      "allow": { "tools": ["*"] },
+      "limits": { "concurrency": 4 }
+    },
+    {
+      "name": "virustotal-mcp",
+      "enabled": false,
+      "transport": "stdio",
+      "command": "uvx",
+      "args": ["--from", "git+https://github.com/<ORG>/<REPO>.git", "virustotal-mcp", "--mode", "stdio"],
+      "env": { "VT_API_KEY": "${VT_API_KEY}" },
+      "allow": { "tools": ["*"] }
+    },
+    {
+      "name": "threat-intel-mcp",
+      "enabled": false,
+      "transport": "stdio",
+      "command": "uvx",
+      "args": ["--from", "git+https://github.com/<ORG>/<REPO>.git", "threat-intel-mcp", "--mode", "stdio"],
+      "env": { "TI_API_KEY": "${TI_API_KEY}", "TI_ENDPOINT": "${TI_ENDPOINT}" },
+      "allow": { "tools": ["*"] }
+    },
+    {
+      "name": "fs-local",
+      "type": "fs",
+      "root": "../../",
+      "scopes": ["security-lab", "artifacts", "logs"],
+      "readOnly": false
+    },
+    {
+      "name": "http",
+      "type": "http",
+      "allowDomains": ["docs.sentinelone.com"],
+      "timeoutsMs": 15000
+    },
+    {
+      "name": "git-readonly",
+      "type": "git",
+      "readOnly": true
+    }
+  ]
+}

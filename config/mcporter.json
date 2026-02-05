@@ -1,0 +1,48 @@
+{
+  "$schema": "https://raw.githubusercontent.com/steipete/mcporter/main/schema.json",
+  "mcpServers": {
+    "purple-mcp": {
+      "transport": "stdio",
+      "command": "/home/orchestrator/.local/bin/uvx",
+      "args": [
+        "--from",
+        "git+https://github.com/Sentinel-One/purple-mcp.git",
+        "purple-mcp",
+        "--mode",
+        "stdio"
+      ],
+      "env": {
+        "PURPLEMCP_CONSOLE_TOKEN": "${PURPLEMCP_CONSOLE_TOKEN}",
+        "PURPLEMCP_CONSOLE_BASE_URL": "${PURPLEMCP_CONSOLE_BASE_URL}"
+      }
+    },
+    "virustotal": {
+      "transport": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@burtthecoder/mcp-virustotal"
+      ],
+      "env": {
+        "VIRUSTOTAL_API_KEY": "${VIRUSTOTAL_API_KEY}"
+      }
+    },
+    "ti-aggregator": {
+      "transport": "stdio",
+      "command": "node",
+      "args": [
+        "/home/orchestrator/.openclaw/workspace/security-lab/mcp/ti-aggregator/server.js"
+      ],
+      "env": {
+        "VIRUSTOTAL_API_KEY": "${VIRUSTOTAL_API_KEY}",
+        "OTX_API_KEY": "${OTX_API_KEY}",
+        "GREYNOISE_API_KEY": "${GREYNOISE_API_KEY}",
+        "ABUSEIPDB_API_KEY": "${ABUSEIPDB_API_KEY}",
+        "SHODAN_API_KEY": "${SHODAN_API_KEY}",
+        "URLSCAN_API_KEY": "${URLSCAN_API_KEY}",
+        "ABUSECH_API_KEY": "${ABUSECH_API_KEY}"
+      },
+      "enabled": true
+    }
+  }
+}

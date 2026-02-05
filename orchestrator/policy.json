@@ -1,0 +1,32 @@
+{
+  "reportDelivery": {
+    "surface": "chat"
+  },
+  "prioritization": {
+    "kevHighWeight": true,
+    "assetTagWeights": {}
+  },
+  "cadence": {
+    "securityAnalyst": {
+      "intervalMin": 30,
+      "quietHours": { "start": "22:00", "end": "04:00", "tz": "America/Los_Angeles" }
+    },
+    "threatHunterDaily": "08:00",
+    "tiDigestDaily": "08:30",
+    "alertThreatHunterDaily": "09:00",
+    "vulnManagerDaily": "09:30"
+  },
+  "iocScope": {
+    "environmentSeen": ["hash", "ip", "domain", "url", "cve"],
+    "tiHunts": ["hash", "ip", "domain"]
+  },
+  "tiBudgetsPerDay": {
+    "virustotal": 100,
+    "otx": 100,
+    "greynoise": 10,
+    "abuseipdb": 100,
+    "abusech": 100,
+    "cisa_kev": 100
+  },
+  "tiAutoLimitDiscovery": true
+}

@@ -1,0 +1,29 @@
+name: indicator-bulk-enrich
+intent: Bulk enrich multiple indicators using the local TI Aggregator
+inputs:
+  indicators: []
+  type: auto
+  sources: [otx, greynoise, kev, abusech, virustotal]
+  concurrency: 4
+constraints:
+  readOnly: true
+  timeBudgetMin: 10
+plan:
+  - id: bulk
+    tool: ti-aggregator:bulk_enrich
+    params:
+      indicators: ${inputs.indicators}
+      type: ${inputs.type}
+      sources: ${inputs.sources}
+      concurrency: ${inputs.concurrency}
+    provides: [ti_batch]
+  - id: write
+    tool: fs-local:write_file
+    params:
+      path: artifacts/ti_batch.json
+      content: ${ti_batch}
+outputs:
+  - artifacts/ti_batch.json
+  - report.md
+report:
+  template: indicator_bulk_enrich.md

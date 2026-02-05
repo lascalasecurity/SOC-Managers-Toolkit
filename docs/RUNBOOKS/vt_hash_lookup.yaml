@@ -1,0 +1,23 @@
+name: vt-hash-lookup
+intent: Lookup a file hash via the local TI Aggregator (VirusTotal-backed)
+inputs:
+  hash: null
+constraints:
+  readOnly: true
+  timeBudgetMin: 2
+plan:
+  - id: vt
+    tool: ti-aggregator:file_report
+    params:
+      hash: ${inputs.hash}
+    provides: [vt_report]
+  - id: write
+    tool: fs-local:write_file
+    params:
+      path: artifacts/vt_${inputs.hash}.json
+      content: ${vt_report}
+outputs:
+  - artifacts/vt_${inputs.hash}.json
+  - report.md
+report:
+  template: vt_hash_lookup.md

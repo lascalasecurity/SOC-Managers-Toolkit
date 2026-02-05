@@ -1,0 +1,25 @@
+name: asset-inventory
+intent: Baseline asset inventory via Purple MCP
+inputs:
+  surface: endpoint # options: endpoint|cloud|identity|network
+  limit: 100
+constraints:
+  readOnly: true
+  timeBudgetMin: 5
+plan:
+  - id: list
+    tool: purple-mcp:list_inventory_items
+    params:
+      surface: ${inputs.surface}
+      limit: ${inputs.limit}
+    provides: [items]
+  - id: sample
+    tool: fs-local:write_file
+    params:
+      path: artifacts/asset-sample.json
+      content: ${items[0:10]}
+outputs:
+  - artifacts/asset-sample.json
+  - report.md
+report:
+  template: asset_inventory.md

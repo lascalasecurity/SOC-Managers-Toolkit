@@ -1,0 +1,31 @@
+name: alert-triage
+intent: Summarize recent alerts via Purple MCP
+inputs:
+  first: 50
+  view_type: RECENT
+constraints:
+  readOnly: true
+  timeBudgetMin: 5
+plan:
+  - id: list
+    tool: purple-mcp:list_alerts
+    params:
+      first: ${inputs.first}
+      view_type: ${inputs.view_type}
+    provides: [alerts]
+  - id: notes
+    foreach: ${alerts}
+    tool: purple-mcp:get_alert_notes
+    params:
+      alert_id: ${item.id}
+    provides: [alert_notes]
+  - id: write
+    tool: fs-local:write_file
+    params:
+      path: artifacts/alerts.json
+      content: ${alerts}
+outputs:
+  - artifacts/alerts.json
+  - report.md
+report:
+  template: alert_triage.md

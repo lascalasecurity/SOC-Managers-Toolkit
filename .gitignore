@@ -1,0 +1,20 @@
+# Ignore local secrets/config
+mcp/.env.local
+mcp/servers.local.json
+runs/
+artifacts/
+logs/
+
+# TI aggregator
+mcp/ti-aggregator/cache/
+
+# Node deps
+**/node_modules/
+
+# Local caches
+mcp/ti-aggregator/cache/
+
+# Local-only memory (OpenClaw workspace root ignores these separately)
+# (kept here in case you ever run OpenClaw with workspace=security-lab)
+MEMORY.md
+memory/
