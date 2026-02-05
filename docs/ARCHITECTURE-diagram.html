@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Jarvis SecOps Lab - Architecture Diagram</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #050816;
+      color: #f5f7ff;
+      margin: 0;
+      padding: 2rem;
+    }
+    h1, h2, h3 {
+      color: #f5f7ff;
+      margin-top: 1.5rem;
+    }
+    a { color: #7bdcff; }
+    code { background: #111827; padding: 0.1rem 0.25rem; border-radius: 3px; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 1.5rem;
+      margin-top: 1.5rem;
+    }
+    .card {
+      background: #020617;
+      border-radius: 8px;
+      padding: 1rem 1.25rem;
+      border: 1px solid #1f2937;
+      box-shadow: 0 10px 40px rgba(15, 23, 42, 0.7);
+    }
+    .card h3 {
+      margin-top: 0;
+      font-size: 1.05rem;
+    }
+    .tag {
+      display: inline-block;
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      padding: 0.12rem 0.4rem;
+      border-radius: 999px;
+      border: 1px solid #4b5563;
+      color: #e5e7eb;
+      margin-right: 0.35rem;
+      margin-bottom: 0.25rem;
+    }
+    .tag-core { border-color: #f97316; color: #fed7aa; }
+    .tag-agent { border-color: #22c55e; color: #bbf7d0; }
+    .tag-helper { border-color: #38bdf8; color: #bae6fd; }
+    .tag-cron { border-color: #a855f7; color: #e9d5ff; }
+
+    .diagram {
+      margin-top: 2rem;
+      background: radial-gradient(circle at top, #020617 0, #020617 40%, #020617 60%, #020617 100%);
+      border-radius: 10px;
+      border: 1px solid #111827;
+      padding: 1.5rem;
+      overflow-x: auto;
+      font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-size: 0.8rem;
+      line-height: 1.4;
+      white-space: pre;
+      color: #e5e7eb;
+    }
+    .legend {
+      font-size: 0.8rem;
+      color: #9ca3af;
+    }
+    ul { margin-top: 0.4rem; }
+    li { margin-bottom: 0.2rem; }
+    hr { border: none; border-top: 1px solid #1f2937; margin: 2rem 0; }
+  </style>
+</head>
+<body>
+  <h1>Jarvis SecOps Lab &mdash; Architecture Diagram (Point-in-Time)</h1>
+  <p>
+    Visual map of the current Jarvis SecOps lab: agents, JS helpers, MCP servers, cron wiring, and
+    artifact flows. This is a point-in-time snapshot; update it as wiring or behavior changes.
+  </p>
+
+  <h2>Layered View</h2>
+  <div class="diagram">
++----------------------------------------------------------------------------------+
+|                                   User (You)                                     |
+|                               & Jarvis (Orchestrator)                           |
++----------------------------------------------------------------------------------+
+              |                                                ^
+              | openclaw cron / sessions                       |
+              v                                                |
++-----------------------------+                     +------------------------------+
+|     Reasoning Agents        |                     |         SOC Manager          |
+|  (isolated agentTurn jobs) |                     | (weekly overview + QA layer) |
++-----------------------------+                     +------------------------------+
+  |        |          |   |   \                                          ^
+  |        |          |   |    \                                         |
+  |        |          |   |     \                                        |
+  v        v          v   v      v                                       |
++---------+ +--------+ +-----+ +--------+ +----------------+             |
+| SecAnal | | Vuln   | | TI  | | Threat | | Proactive Hunt |-------------+
+| (30m)   | | Mgr    | |Anal | | Hunter | |  (TI-driven)   |  QA + facts
++---------+ +--------+ +-----+ +--------+ +----------------+
+  |           |          |       |              |
+  |           |          |       |              |
+  |           |          |       |              |
+  |           |          |       |              |
+  v           v          v       v              v
++----------------------------------------------------------------------------------+
+|                                JS Helper Runners                                 |
+|    (Node.js, optional; agents may invoke with `--mode collect`)                  |
+|  - security-analyst/runner.js --mode collect   → alerts.json                     |
+|  - vuln-manager/runner.js       --mode collect → vulnerabilities.raw.json        |
+|  - threat-hunter/runner.js      --mode collect → alerts.raw.json (7d window)     |
++----------------------------------------------------------------------------------+
+              |                               |
+              | normalized artifacts          | raw TI / hunts                      
+              v                               v
++----------------------------------------------------------------------------------+
+|                                   Artifacts                                      |
+|  - artifacts/cron/security-analyst/&lt;STAMP&gt;/...                                  |
+|  - artifacts/cron/vuln-manager/&lt;YYYYMMDD&gt;/...                                   |
+|  - artifacts/cron/ti-digest/&lt;YYYYMMDD&gt;/...                                      |
+|  - artifacts/cron/threat-hunter/&lt;YYYYMMDD&gt;/...                                  |
+|  - artifacts/cron/proactive-hunter/&lt;YYYYMMDD&gt;/...                               |
+|  - artifacts/cron/soc-manager/&lt;YYYYMMDD&gt;/overview.md (SOC view + QA)            |
++----------------------------------------------------------------------------------+
+              |
+              | via MCPorter
+              v
++----------------------------------------------------------------------------------+
+|                                  MCPorter                                        |
+|                (router: npx mcporter --config config/mcporter.json)              |
++----------------------------------------------------------------------------------+
+      |                        |                             |
+      v                        v                             v
++------------+        +-------------------+          +---------------+
+| purple-mcp |        |   ti-aggregator   |          |  virustotal   |
+| (Purple)   |        |  (TI MCP server)  |          |   (legacy)    |
++------------+        +-------------------+          +---------------+
+  | Alerts, PQ, AI       | VT, OTX, KEV, GN, abuse.ch, ...
+  | Vulns, Misconfig     | Normalized TI for IOCs & CVEs
+  | PowerQuery           |
+  </div>
+  <p class="legend">
+    Top: you and Jarvis. Middle: reasoning agents (Security Analyst, Vuln Manager, TI Analyst,
+    Threat Hunter, Proactive Hunter) plus JS helpers. Bottom: MCP servers backing all actions.
+  </p>
+
+  <hr />
+
+  <h2>Per-Agent Flow Visuals</h2>
+
+  <h3>1. Security Analyst (Alerts Triage)</h3>
+  <div class="diagram">
+Cron (*/30m, PT, outside quiet hours)
+  │
+  v
+Security Analyst agentTurn (isolated)
+  │
+  ├─(optional) exec → <code>node agents/security-analyst/runner.js --mode collect</code>
+  │         │
+  │         └─&gt; writes <code>alerts.json</code> → <code>artifacts/cron/security-analyst/&lt;STAMP&gt;/alerts.json</code>
+  │
+  ├─&gt; Load latest <code>alerts.json</code>
+  │
+  ├─&gt; For chosen top alerts (3–5):
+  │      ├─ Purple MCP: <code>get_alert</code>, <code>get_alert_notes</code>, <code>get_alert_history</code>
+  │      ├─ Extract IOCs (IP/domain/url/hash/CVE) from full alert context
+  │      └─ TI MCP: <code>enrich_indicator</code>, <code>cve_report</code> as needed
+  │
+  ├─&gt; Triage &amp; prioritize alerts with reasoning
+  │
+  ├─&gt; Write artifacts:
+  │      ├─ <code>focused_alerts.json</code> (optional)
+  │      ├─ <code>enrichment.json</code>
+  │      └─ <code>report.md</code>
+  │
+  └─&gt; Emit chat summary (always, outside quiet hours)
+  </div>
+
+  <h3>2. Vulnerability Manager (Risk Posture)</h3>
+  <div class="diagram">
+Cron (daily 07:00 PT)
+  │
+  v
+Vulnerability Manager agentTurn (isolated)
+  │
+  ├─ exec → <code>node agents/vuln-manager/runner.js --mode collect</code>
+  │         │
+  │         └─&gt; <code>vulnerabilities.raw.json</code> → <code>artifacts/cron/vuln-manager/&lt;YYYYMMDD&gt;/</code>
+  │
+  ├─&gt; Load <code>vulnerabilities.raw.json</code>
+  ├─&gt; Load previous <code>last.json</code> if present
+  │
+  ├─&gt; Reason about changes:
+  │      ├─ New vs old
+  │      ├─ Severity/status shifts
+  │      └─ KEV / exploited-in-the-wild / EPSS-like indicators
+  │
+  ├─&gt; Risk-based prioritization:
+  │      ├─ Top N vulns/CVEs by impact
+  │      ├─ Group by software/product/asset
+  │      └─ TI MCP <code>cve_report</code> for key CVEs
+  │
+  ├─&gt; Write artifacts:
+  │      ├─ <code>prioritized.json</code>
+  │      ├─ <code>changes.json</code>
+  │      ├─ <code>report.md</code>
+  │      └─ update <code>last.json</code>
+  │
+  └─&gt; Emit chat summary (top risks + remediation suggestions)
+  </div>
+
+  <h3>3. TI Analyst (Digest & IOC Feed)</h3>
+  <div class="diagram">
+Cron (daily 05:00 PT)
+  │
+  v
+TI Analyst agentTurn (isolated)
+  │
+  ├─ TI MCP: <code>enrich_indicator</code>, <code>bulk_enrich</code>, <code>cve_report</code>, etc.
+  │
+  ├─ Curate threats:
+  │      ├─ Ransomware / infostealers
+  │      ├─ APT / high-impact campaigns
+  │      ├─ High-impact CVEs (KEV/exploited)
+  │
+  ├─ Rate relevance for this environment
+  │
+  ├─ Write artifacts:
+  │      ├─ <code>digest.md</code> (human-readable)
+  │      └─ <code>ti_iocs.json</code> (machine-consumable for hunters)
+  │
+  └─ Emit chat summary + “For other agents” pointers
+  </div>
+
+  <h3>4. Threat Hunter (Alert-Driven)</h3>
+  <div class="diagram">
+Cron (weekly Mon 08:00 PT)
+  │
+  v
+Threat Hunter agentTurn (isolated)
+  │
+  ├─ exec → <code>node agents/threat-hunter/runner.js --mode collect</code>
+  │         │
+  │         └─&gt; <code>alerts.raw.json</code> → <code>artifacts/cron/threat-hunter/&lt;YYYYMMDD&gt;/</code>
+  │
+  ├─&gt; Load <code>alerts.raw.json</code> (7d window + alerts)
+  │
+  ├─&gt; Derive 2–5 alert-driven hypotheses:
+  │      ├─ lateral movement from host(s) in alerts
+  │      ├─ credential theft follow-up
+  │      └─ C2 / malware activity based on existing alerts
+  │
+  ├─&gt; For each hypothesis:
+  │      ├─ Purple: <code>get_alert</code>, <code>get_alert_notes</code>, <code>get_alert_history</code>
+  │      ├─ Extract alert-driven IOCs
+  │      ├─ (Optional) TI MCP for deeper understanding of those IOCs
+  │      ├─ <code>purple_ai</code> → generate PowerQueries
+  │      └─ <code>powerquery</code> → execute hunts
+  │
+  ├─&gt; Interpret results and write:
+  │      ├─ <code>hypotheses.json</code>
+  │      ├─ <code>powerqueries.json</code>
+  │      ├─ <code>results.json</code> / per-query files
+  │      └─ <code>report.md</code>
+  │
+  └─&gt; Emit chat summary (what was hunted, evidence/no evidence, follow-ups)
+  </div>
+
+  <h3>5. Proactive Threat Hunter (TI-Driven)</h3>
+  <div class="diagram">
+Cron (weekly Mon 08:00 PT)
+  │
+  v
+Proactive Threat Hunter agentTurn (isolated)
+  │
+  ├─&gt; Use TI MCP (+ TI Digest feed) to select high-value IOCs
+  ├─&gt; Design PQ hunts via <code>purple_ai</code>
+  ├─&gt; Execute via <code>powerquery</code> over recent window (~7d)
+  ├─&gt; Interpret results and write TI-hunt artifacts
+  └─&gt; Emit chat summary focused on TI-driven threats
+  </div>
+
+  <h3>6. SOC Manager (Overview + QA)</h3>
+  <div class="diagram">
+Cron (weekly Mon 09:00 PT)
+  │
+  v
+SOC Manager agentTurn (isolated)
+  │
+  ├─&gt; For each agent:
+  │      ├─ Find latest artifacts under <code>artifacts/cron/&lt;agent&gt;/</code>
+  │      └─ Read <code>report.md</code> + key JSONs
+  │
+  ├─&gt; Build per-agent summaries (alerts, TI, vuln posture, hunts)
+  │
+  ├─&gt; QA / fact-check:
+  │      ├─ Compare conclusions vs raw data
+  │      ├─ Cross-check agents (TI vs Vuln, Alerts vs Hunts, etc.)
+  │      └─ Record corrections / reconciled view
+  │
+  ├─&gt; Write <code>overview.md</code> under <code>artifacts/cron/soc-manager/&lt;YYYYMMDD&gt;/</code>
+  │
+  └─&gt; Emit weekly chat summary (executive bullets + key corrections)
+  </div>
+
+  <hr />
+
+  <h2>Notes</h2>
+  <ul>
+    <li>This HTML document is meant to track the actual running state of the lab. When you change cron
+        schedules, prompts, or helper behavior, update both this file and <code>docs/AGENTS.md</code>.</li>
+    <li>Future dashboards can read directly from the <code>artifacts/cron/...</code> trees and mirror the
+        flows shown in these diagrams.</li>
+    <li>Jarvis uses SOC Manager’s QA plus direct observation of artifacts to tune prompts and helper
+        behavior over time.</li>
+  </ul>
+
+</body>
+</html>

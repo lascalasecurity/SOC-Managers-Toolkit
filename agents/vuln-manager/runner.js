@@ -33,22 +33,28 @@ function priorityScore(v) {
 }
 
 async function main() {
+  const mode = process.argv.includes('--mode') ? process.argv[process.argv.indexOf('--mode') + 1] : 'collect';
   const { stamp } = stampNow();
   const outDir = path.join(CWD, 'artifacts', 'cron', 'vuln-manager', stamp);
   const stateDir = path.join(CWD, 'artifacts', 'cron', 'vuln-manager');
   ensureDir(outDir);
 
-  // Pull vulnerabilities
+  // Pull vulnerabilities (collector behavior is always the first step)
   const list = await mcporterCall({
     cwd: CWD,
     tool: 'purple-mcp.list_vulnerabilities',
-    args: { first: 50 },
+    args: { first: 100 },
     output: 'json',
     timeoutMs: 120000
   });
 
   const listJson = JSON.parse(list.stdout);
   writeJson(path.join(outDir, 'vulnerabilities.raw.json'), listJson);
+
+  if (mode === 'collect') {
+    process.stdout.write(`Collected vulnerabilities to ${path.relative(CWD, outDir)}/vulnerabilities.raw.json\n`);
+    return;
+  }
 
   const edges = listJson?.edges ?? [];
   const vulns = edges.map((e) => e.node).filter(Boolean);

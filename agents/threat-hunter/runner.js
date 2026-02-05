@@ -16,17 +16,16 @@ function ymdNow() {
 }
 
 async function main() {
+  const mode = process.argv.includes('--mode') ? process.argv[process.argv.indexOf('--mode') + 1] : 'collect';
   const ymd = ymdNow();
   const outDir = path.join(CWD, 'artifacts', 'cron', 'threat-hunter', ymd);
   ensureDir(outDir);
 
-  // last 7 days (168h)
+  // last 7 days (168h) by default
   const range = await getTimestampRange({ cwd: CWD, hours: 24 * 7 });
 
-  // Fallback approach: use list_alerts and client-side filter on created/detected time
+  // Snapshot alerts via list_alerts and client-side filter on created/detected time
   const list = await listAlerts({ cwd: CWD, first: 100 });
-  writeJson(path.join(outDir, 'alerts.list.json'), list);
-
   const edges = list?.edges ?? [];
   const allAlerts = edges.map((e) => e.node).filter(Boolean);
   const alerts = allAlerts.filter((a) => {
@@ -35,6 +34,17 @@ async function main() {
     const t = new Date(ts).getTime();
     return t >= range.start_timestamp && t <= range.end_timestamp;
   });
+
+  const snapshot = { window: range, alerts };
+  writeJson(path.join(outDir, 'alerts.raw.json'), snapshot);
+
+  if (mode === 'collect') {
+    process.stdout.write(`Collected alerts snapshot to ${path.relative(CWD, outDir)}/alerts.raw.json\n`);
+    return;
+  }
+
+  // The remaining logic (IOCs, enrichment, AI guidance) is kept for non-collect mode and may be phased out
+  // as the reasoning agent takes over more of the hunt design.
 
   // Collect IOCs from top alerts
   const iocSet = new Set();

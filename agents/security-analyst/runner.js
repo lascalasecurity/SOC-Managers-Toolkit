@@ -41,6 +41,7 @@ function inQuietHours(date = new Date()) {
 }
 
 async function main() {
+  const mode = process.argv.includes('--mode') ? process.argv[process.argv.indexOf('--mode') + 1] : 'collect';
   const started = new Date();
 
   if (inQuietHours(started)) {
@@ -52,17 +53,24 @@ async function main() {
   const outDir = path.join(CWD, 'artifacts', 'cron', 'security-analyst', stamp);
   ensureDir(outDir);
 
-  // 1) list alerts
+  // 1) list alerts (collector behavior is always the first step)
   const list = await mcporterCall({
     cwd: CWD,
     tool: 'purple-mcp.list_alerts',
-    args: { first: 20 },
+    args: { first: 50 },
     output: 'json',
     timeoutMs: 120000
   });
 
   const listJson = JSON.parse(list.stdout);
   writeJson(path.join(outDir, 'alerts.json'), listJson);
+
+  if (mode === 'collect') {
+    // In collect mode we stop after fetching and normalizing alerts.
+    // Reasoning agents will read alerts.json and perform triage/analysis themselves.
+    process.stdout.write(`Collected alerts to ${path.relative(CWD, outDir)}/alerts.json\n`);
+    return;
+  }
 
   const edges = listJson?.edges ?? [];
   const nodes = edges.map((e) => e.node).filter(Boolean);
