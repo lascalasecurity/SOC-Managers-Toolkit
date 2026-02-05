@@ -3,6 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "security-analyst": "node agents/security-analyst/runner.js"
+    "security-analyst": "node agents/security-analyst/runner.js",
+    "vuln-manager": "node agents/vuln-manager/runner.js"
   }
 }
+
