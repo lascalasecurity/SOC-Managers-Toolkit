@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Jarvis SecOps — Dashboard</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand__mark">J</div>
+      <div>
+        <div class="brand__title">Jarvis SecOps</div>
+        <div class="brand__subtitle">Operational posture dashboard (local-only)</div>
+      </div>
+    </div>
+
+    <div class="topbar__right">
+      <div class="pill" id="connPill">connecting…</div>
+      <button class="btn" id="refreshBtn">Refresh</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="left">
+      <div class="panel">
+        <div class="panel__title">Agents</div>
+        <div class="panel__body" id="agentsList"></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel__title">Run Browser</div>
+        <div class="panel__body">
+          <div class="muted">Select an agent to browse runs.</div>
+          <div id="runsList" class="runs"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="right">
+      <div class="grid" id="tiles"></div>
+
+      <div class="panel" id="detailPanel" style="display:none">
+        <div class="panel__title" id="detailTitle">Details</div>
+        <div class="panel__body">
+          <div class="detail__meta" id="detailMeta"></div>
+          <div class="detail__split">
+            <div>
+              <div class="subhead">Artifacts</div>
+              <div id="detailFiles" class="files"></div>
+            </div>
+            <div>
+              <div class="subhead">Preview</div>
+              <div id="detailPreview" class="preview"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

@@ -5,7 +5,13 @@
   "scripts": {
     "security-analyst": "node agents/security-analyst/runner.js",
     "vuln-manager": "node agents/vuln-manager/runner.js",
-    "ti-analyst": "node agents/ti-analyst/runner.js --mode collect"
+    "ti-analyst": "node agents/ti-analyst/runner.js --mode collect",
+    "dashboard": "node dashboard/server.js"
+  },
+  "dependencies": {
+    "chokidar": "^4.0.3",
+    "express": "^4.21.2",
+    "markdown-it": "^14.1.0"
   }
 }
 
