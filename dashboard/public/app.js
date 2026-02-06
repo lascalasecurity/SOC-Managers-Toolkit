@@ -24,41 +24,61 @@ function esc(s) {
   return String(s).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
 }
 
-function fmtSummary(summary) {
-  if (!summary) return [];
-
-  if (summary.kind === 'alerts') {
-    const sev = summary.bySeverity || {};
-    const st = summary.byStatus || {};
-    return [
-      ['Alerts', summary.total],
-      ['NEW', st.NEW ?? 0],
-      ['CRIT/HIGH', `${sev.CRITICAL ?? 0}/${sev.HIGH ?? 0}`]
-    ];
+function fmtSummary(summary, weekly, agentId) {
+  // Security Analyst: alert posture + activity
+  if (agentId === 'security-analyst') {
+    const rows = [];
+    if (summary && summary.kind === 'alerts') {
+      const sev = summary.bySeverity || {};
+      rows.push(['Alerts (latest)', summary.total]);
+      rows.push(['HIGH/CRITICAL & STILL OPEN', summary.openHighCrit ?? 0]);
+      rows.push(['New alerts (24h)', summary.new24h ?? 0]);
+    }
+    if (weekly?.alerts7d != null) rows.push(['Distinct alerts (7d)', weekly.alerts7d]);
+    if (weekly?.runs7d != null) rows.push(['Runs (7d)', weekly.runs7d]);
+    return rows;
   }
 
-  if (summary.kind === 'vulns') {
-    const sev = summary.bySeverity || {};
-    return [
-      ['Findings', summary.total],
-      ['HIGH', sev.HIGH ?? 0],
-      ['Exploited', summary.exploitedInTheWild ?? 0]
-    ];
-  }
-
-  if (summary.kind === 'ti') {
+  // TI Digest: IOC volume + KEV density
+  if (agentId === 'ti-digest' && summary && summary.kind === 'ti') {
     const byType = summary.byType || {};
     return [
-      ['IOCs', summary.total],
-      ['KEV', summary.kevCount ?? 0],
-      ['CVEs', byType.cve ?? 0]
+      ['IOCs (today)', summary.total],
+      ['KEV CVEs', summary.kevCount ?? 0],
+      ['Infra IOCs', (byType.domain ?? 0) + (byType.ip ?? 0) + (byType.url ?? 0)]
     ];
   }
 
-  if (summary.kind === 'error') {
-    return [['Summary', 'parse failed']];
+  // Vulnerability Manager: risk posture snapshot
+  if (agentId === 'vuln-manager' && summary && summary.kind === 'vulns') {
+    const sev = summary.bySeverity || {};
+    const highCrit = (sev.CRITICAL ?? 0) + (sev.HIGH ?? 0);
+    return [
+      ['Findings (latest)', summary.total],
+      ['HIGH/CRIT', highCrit],
+      ['Exploited (KEV)', summary.exploitedInTheWild ?? 0]
+    ];
   }
 
+  // SOC Manager: meta health + QA corrections
+  if (agentId === 'soc-manager' && weekly) {
+    return [
+      ['Daily reports (7d)', weekly.dailyReports7d ?? 0],
+      ['Weekly reports (7d)', weekly.weeklyReports7d ?? 0],
+      ['QA issues (7d)', weekly.qaIssues7d ?? 0]
+    ];
+  }
+
+  // Hunts (Threat Hunter / Proactive Hunter): keep weekly hunt stats.
+  if ((agentId === 'threat-hunter' || agentId === 'proactive-hunter') && weekly) {
+    const hunts = weekly.hunts7d ?? weekly.runs7d ?? 0;
+    return [
+      ['Runs (7d)', weekly.runs7d ?? 0],
+      ['Hunts (7d)', hunts]
+    ];
+  }
+
+  // Other agents: no per-tile summary rows yet (will be replaced with cleaner stats).
   return [];
 }
 
@@ -83,12 +103,10 @@ function renderTiles(overview) {
     const badgeClass = latest ? 'ok' : 'warn';
     const badgeText = latest ? 'latest' : 'no data';
 
-    const rows = fmtSummary(latest?.summary);
+    const rows = fmtSummary(latest?.summary, latest?.weekly, a.agent);
     const rowsHtml = rows
       .map(([k, v]) => `<div class="kv__row"><div class="kv__k">${esc(k)}</div><div class="kv__v">${esc(v)}</div></div>`)
       .join('');
-
-    const preview = latest?.preview ? `<div class="tile__preview">${esc(latest.preview)}${latest.preview.length >= 420 ? '…' : ''}</div>` : '';
 
     const tile = document.createElement('div');
     tile.className = 'tile';
@@ -104,7 +122,6 @@ function renderTiles(overview) {
         <div class="kv__row"><div class="kv__k">Latest run</div><div class="kv__v">${esc(formatStamp(latest?.ts || latest?.run || ''))}</div></div>
         ${rowsHtml}
       </div>
-      ${preview}
     `;
 
     tile.addEventListener('click', async () => {
@@ -128,7 +145,6 @@ function renderAgentsList(overview) {
     row.className = 'agentLink';
     row.innerHTML = `
       <div style="font-weight:700">${esc(a.agentName)}</div>
-      <div class="agentLink__sub">${esc(a.latest?.run || 'no runs yet')}</div>
     `;
     row.addEventListener('click', async () => {
       state.selectedAgent = a.agent;
@@ -219,9 +235,21 @@ async function openFile(filePath) {
   prev.innerHTML = `<pre>${esc(a.text || '')}</pre>`;
 }
 
+async function loadSocDaily() {
+  try {
+    const d = await api('/api/soc-daily');
+    $('#socDailyMeta').textContent = `Day: ${formatStamp(d.day)} — ${d.file}`;
+    $('#socDailyContent').innerHTML = d.html;
+  } catch (e) {
+    $('#socDailyMeta').textContent = 'No daily overview yet';
+    $('#socDailyContent').innerHTML = '<div class="muted">Waiting for first daily SOC Manager run…</div>';
+  }
+}
+
 async function refresh() {
   try {
     setConn('ok', 'loading…');
+    await loadSocDaily();
     const overview = await api('/api/overview');
     state.overview = overview;
     renderTiles(overview);

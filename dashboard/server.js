@@ -84,6 +84,134 @@ function guessRunTimestamp(runDirName) {
   return null;
 }
 
+function stampToDate(stamp) {
+  const ts = guessRunTimestamp(stamp);
+  if (!ts) return null;
+  const m = ts.match(/^(\d{4})(\d{2})(\d{2})(?:-(\d{2})(\d{2}))?$/);
+  if (!m) return null;
+  const [, y, mo, d, hh, mi] = m;
+  const year = Number(y);
+  const month = Number(mo) - 1;
+  const day = Number(d);
+  const hour = hh ? Number(hh) : 0;
+  const min = mi ? Number(mi) : 0;
+  return new Date(Date.UTC(year, month, day, hour, min));
+}
+
+async function computeWeeklyStats(agent, agentDir, dirs, days = 7) {
+  const now = Date.now();
+  const horizon = now - days * 24 * 60 * 60 * 1000;
+  const recent = dirs.filter((d) => {
+    const dt = stampToDate(d);
+    return dt && dt.getTime() >= horizon;
+  });
+
+  const out = { runs7d: recent.length };
+
+  if (!recent.length) return out;
+
+  if (agent === 'security-analyst') {
+    const idSet = new Set();
+    for (const r of recent) {
+      const dir = path.join(agentDir, r);
+      const p = path.join(dir, 'alerts.json');
+      try {
+        const j = await readJson(p);
+        const nodes = (j?.edges || []).map((e) => e?.node).filter(Boolean);
+        for (const n of nodes) {
+          const ts = n.detected_at || n.detectedAt || n.created_at || n.createdAt;
+          const id = n.id;
+          if (!id || !ts) continue;
+          const t = new Date(ts).getTime();
+          if (t >= horizon && t <= now) idSet.add(id);
+        }
+      } catch {
+        // ignore missing/invalid runs
+      }
+    }
+    out.alerts7d = idSet.size;
+  }
+
+  if (agent === 'proactive-hunter' || agent === 'threat-hunter') {
+    let hunts = 0;
+    for (const r of recent) {
+      const dir = path.join(agentDir, r);
+      const p = path.join(dir, 'hunts.json');
+      try {
+        const j = await readJson(p);
+        if (Array.isArray(j?.hunts)) hunts += j.hunts.length;
+        else hunts += 1; // count the run
+      } catch {
+        hunts += 1; // at least count the run
+      }
+    }
+    out.hunts7d = hunts;
+  }
+
+  if (agent === 'soc-manager') {
+    let dailyReports = 0;
+    let weeklyReports = 0;
+    let qaIssues = 0;
+
+    for (const r of recent) {
+      const dir = path.join(agentDir, r);
+      const files = await listFiles(dir);
+      if (files.includes('overview-daily.md')) dailyReports++;
+      if (files.includes('overview.md')) {
+        weeklyReports++;
+        try {
+          const txt = await readText(path.join(dir, 'overview.md'));
+          const m = txt.match(/Cross-Agent QA[\s\S]*?(?=^## |\n#|$)/m);
+          if (m && m[0]) {
+            const lines = m[0].split(/\r?\n/);
+            for (const line of lines) {
+              if (/^\s*-\s+/.test(line)) qaIssues++;
+            }
+          }
+        } catch {
+          // ignore
+        }
+      }
+    }
+
+    out.dailyReports7d = dailyReports;
+    out.weeklyReports7d = weeklyReports;
+    out.qaIssues7d = qaIssues;
+  }
+
+  return out;
+}
+
+async function getLatestRun(agent) {
+  const agentDir = path.join(ARTIFACTS_ROOT, agent);
+  const dirs = await listDirs(agentDir);
+  if (!dirs.length) return null;
+
+  // Sort lexicographically descending works for YYYYMMDD(-HHMM) stamps.
+  dirs.sort().reverse();
+  const latest = dirs[0];
+  const full = path.join(agentDir, latest);
+  const files = await listFiles(full);
+
+  const { primaryMarkdown, preview } = await tryReadPreviewMarkdown(full, files);
+  const summary = await computeDeterministicSummary(agent, full, files);
+  const weekly = await computeWeeklyStats(agent, agentDir, dirs);
+
+  return {
+    id: idFromPath(path.join(agent, latest)),
+    agent,
+    agentName: guessAgentDisplayName(agent),
+    run: latest,
+    ts: guessRunTimestamp(latest),
+    path: path.join(agent, latest),
+    files,
+    primaryMarkdown,
+    preview,
+    summary,
+    weekly
+  };
+}
+
 function stripMarkdown(s) {
   // very lightweight “good enough” preview: remove code fences + headings + bullets
   return String(s)
@@ -117,12 +245,30 @@ async function computeDeterministicSummary(agent, runDirFull, files) {
       const nodes = (j?.edges || []).map((e) => e?.node).filter(Boolean);
       const bySeverity = {};
       const byStatus = {};
+      const now = Date.now();
+      const horizon24 = now - 24 * 60 * 60 * 1000;
+      let new24h = 0;
+      let openHighCrit = 0;
+
       for (const n of nodes) {
         const sev = String(n.severity || 'UNKNOWN').toUpperCase();
         const st = String(n.status || 'UNKNOWN').toUpperCase();
         bySeverity[sev] = (bySeverity[sev] || 0) + 1;
         byStatus[st] = (byStatus[st] || 0) + 1;
+
+        // Alerts still open and high impact
+        if ((sev === 'CRITICAL' || sev === 'HIGH') && st !== 'RESOLVED' && st !== 'CLOSED') {
+          openHighCrit++;
+        }
+
+        // Alerts detected in the last 24h (trend of incoming alerts)
+        const ts = n.detected_at || n.detectedAt || n.created_at || n.createdAt;
+        if (ts) {
+          const t = new Date(ts).getTime();
+          if (!Number.isNaN(t) && t >= horizon24 && t <= now) new24h++;
+        }
       }
+
       const top = nodes
         .slice()
         .sort((a, b) => String(b.detected_at || '').localeCompare(String(a.detected_at || '')))
@@ -141,7 +287,9 @@ async function computeDeterministicSummary(agent, runDirFull, files) {
         total: nodes.length,
         bySeverity,
         byStatus,
-        top
+        top,
+        new24h,
+        openHighCrit
       };
     }
 
@@ -216,31 +364,29 @@ async function computeDeterministicSummary(agent, runDirFull, files) {
   }
 }
 
-async function getLatestRun(agent) {
-  const agentDir = path.join(ARTIFACTS_ROOT, agent);
-  const dirs = await listDirs(agentDir);
-  if (!dirs.length) return null;
+async function getSocDaily() {
+  const socDir = path.join(ARTIFACTS_ROOT, 'soc-manager');
+  const days = await listDirs(socDir);
+  if (!days.length) return { ok: false, error: 'no_daily_reports' };
+  days.sort().reverse();
+  const latestDay = days[0];
+  const dayDir = path.join(socDir, latestDay);
+  const files = await listFiles(dayDir);
 
-  // Sort lexicographically descending works for YYYYMMDD(-HHMM) stamps.
-  dirs.sort().reverse();
-  const latest = dirs[0];
-  const full = path.join(agentDir, latest);
-  const files = await listFiles(full);
+  const dailyName = files.includes('overview-daily.md') ? 'overview-daily.md' : files.includes('overview.md') ? 'overview.md' : null;
+  if (!dailyName) return { ok: false, error: 'no_overview_daily' };
 
-  const { primaryMarkdown, preview } = await tryReadPreviewMarkdown(full, files);
-  const summary = await computeDeterministicSummary(agent, full, files);
+  const p = path.join(dayDir, dailyName);
+  const text = await readText(p);
+  const html = md.render(text);
 
   return {
-    id: idFromPath(path.join(agent, latest)),
-    agent,
-    agentName: guessAgentDisplayName(agent),
-    run: latest,
-    ts: guessRunTimestamp(latest),
-    path: path.join(agent, latest),
-    files,
-    primaryMarkdown,
-    preview,
-    summary
+    ok: true,
+    day: latestDay,
+    file: dailyName,
+    path: path.join('soc-manager', latestDay, dailyName),
+    text,
+    html
   };
 }
 
@@ -299,6 +445,16 @@ app.get('/api/health', (_req, res) => {
 app.get('/api/overview', async (_req, res) => {
   try {
     res.json(await getOverview());
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e?.message || e) });
+  }
+});
+
+app.get('/api/soc-daily', async (_req, res) => {
+  try {
+    const out = await getSocDaily();
+    if (!out.ok) return res.status(404).json(out);
+    res.json(out);
   } catch (e) {
     res.status(500).json({ ok: false, error: String(e?.message || e) });
   }
