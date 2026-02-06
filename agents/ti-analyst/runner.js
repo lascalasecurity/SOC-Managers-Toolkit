@@ -2,8 +2,8 @@
 import path from 'node:path';
 import fs from 'node:fs';
 
-import { ensureDir, writeJson, writeText, readJsonIfExists } from '../../lib/fs.js';
-import { bulkEnrich } from '../../lib/ti.js';
+import { ensureDir, writeJson, writeText } from '../../lib/fs.js';
+import { bulkEnrich, fetchFeedSnapshot } from '../../lib/ti.js';
 
 const CWD = process.env.SECURITY_LAB_CWD || process.cwd();
 const TZ = 'America/Los_Angeles';
@@ -76,19 +76,26 @@ async function main() {
   const outDir = path.join(CWD, 'artifacts', 'cron', 'ti-digest', ymd);
   ensureDir(outDir);
 
-  // Input format: { iocs: [ {indicator, type?, ...} ] } or just [ ... ]
-  // Default input file (optional): config/ti-iocs.seed.json
+  // Primary input: TI Aggregator feed snapshot (KEV + OTX pulses)
+  const snap = await fetchFeedSnapshot({ cwd: CWD, sources: ['kev', 'otx'], limit, days: 7 });
+  const feedItems = Array.isArray(snap?.items) ? snap.items : [];
+
+  // Optional input file (if you want to augment/override): config/ti-iocs.seed.json
   const defaultInputPath = path.join(CWD, 'config', 'ti-iocs.seed.json');
   const inPath = input ? path.resolve(CWD, input) : defaultInputPath;
 
-  let raw = null;
+  let seedList = [];
   if (fs.existsSync(inPath)) {
-    raw = readJsonIfExists(inPath);
+    try {
+      const raw = JSON.parse(fs.readFileSync(inPath, 'utf8'));
+      seedList = Array.isArray(raw) ? raw : Array.isArray(raw?.iocs) ? raw.iocs : [];
+    } catch {
+      seedList = [];
+    }
   }
 
-  const rawList = Array.isArray(raw) ? raw : Array.isArray(raw?.iocs) ? raw.iocs : [];
-
-  const normalized = dedupe(rawList.map(normalizeIoc).filter(Boolean)).slice(0, Math.max(0, limit));
+  const combined = [...feedItems, ...seedList];
+  const normalized = dedupe(combined.map(normalizeIoc).filter(Boolean)).slice(0, Math.max(0, limit));
 
   // Schema v0: deterministic list + optional enrichment blob.
   const tiIocs = normalized.map((i) => ({
@@ -107,11 +114,14 @@ async function main() {
     generatedAt: new Date().toISOString(),
     schema: 'security-lab:ti-iocs:v0',
     input: {
-      path: fs.existsSync(inPath) ? path.relative(CWD, inPath) : null,
-      count: rawList.length
+      feeds: snap?.sources ?? ['kev', 'otx'],
+      feedCount: feedItems.length,
+      seedPath: fs.existsSync(inPath) ? path.relative(CWD, inPath) : null,
+      seedCount: seedList.length
     },
     count: tiIocs.length,
-    iocs: tiIocs
+    iocs: tiIocs,
+    feedErrors: snap?.errors
   });
 
   if (enrich && tiIocs.length) {
@@ -125,7 +135,8 @@ async function main() {
   md += `TI Analyst (collector) — ${ymd} PT\n`;
   md += `Wrote: ${path.relative(CWD, outDir)}/ti_iocs.json\n`;
   md += `IOCs: ${tiIocs.length}\n`;
-  md += `Input: ${fs.existsSync(inPath) ? path.relative(CWD, inPath) : '(none; created empty set)'}\n`;
+  md += `Feeds: ${(snap?.sources || ['kev','otx']).join(', ')} (items ${feedItems.length})\n`;
+  md += `Seed input: ${fs.existsSync(inPath) ? path.relative(CWD, inPath) : '(none)'} (items ${seedList.length})\n`;
   md += `Enrichment: ${enrich ? 'enabled' : 'disabled'}\n`;
 
   writeText(path.join(outDir, 'collector.log.txt'), md);

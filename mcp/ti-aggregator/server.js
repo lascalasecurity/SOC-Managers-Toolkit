@@ -33,6 +33,17 @@ if (!fs.existsSync(ARTIFACTS_DIR)) fs.mkdirSync(ARTIFACTS_DIR, { recursive: true
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+function readJsonIfFresh(p, maxAgeMs) {
+  try {
+    const stat = fs.statSync(p);
+    const ageMs = Date.now() - stat.mtimeMs;
+    if (ageMs > maxAgeMs) return null;
+    return JSON.parse(fs.readFileSync(p, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
 function shouldWriteArtifacts() {
   return env.TI_AGG_WRITE_ARTIFACTS === '1' || env.TI_AGG_WRITE_ARTIFACTS === 'true';
 }
@@ -357,8 +368,142 @@ async function bulkEnrich({ indicators, type = 'auto', sources = ['otx', 'greyno
   return batch;
 }
 
+// --- Feed snapshot helpers (v0) ---
+
+async function fetchOtxPulseSnapshot({ limit = 30 }) {
+  const key = env.OTX_API_KEY;
+  if (!key) return { pulses: [], error: 'OTX_API_KEY missing' };
+
+  const cacheFile = path.join(CACHE_DIR, 'otx_pulses.json');
+  const cached = readJsonIfFresh(cacheFile, 60 * 60 * 1000);
+  if (cached) return { pulses: cached, cached: true };
+
+  // NOTE: OTX API shape can vary by endpoint/account; we use a simple, best-effort endpoint.
+  // If this endpoint returns a different envelope, we still attempt to extract an array.
+  const url = `https://otx.alienvault.com/api/v1/pulses/subscribed?limit=${encodeURIComponent(String(limit))}`;
+  const res = await fetch(url, { headers: { 'X-OTX-API-KEY': key } });
+  if (!res.ok) return { pulses: [], error: `OTX pulses ${res.status}` };
+
+  const data = await res.json();
+  const pulses = Array.isArray(data?.results) ? data.results : Array.isArray(data?.pulses) ? data.pulses : Array.isArray(data) ? data : [];
+
+  try {
+    fs.writeFileSync(cacheFile, JSON.stringify(pulses));
+  } catch {
+    // ignore cache write errors
+  }
+
+  return { pulses, cached: false };
+}
+
+function normalizePulseIndicators(pulse) {
+  const out = [];
+  const created = pulse?.created || pulse?.created_at || pulse?.modified || null;
+  const context = pulse?.name || pulse?.title || pulse?.description || null;
+  const tags = Array.isArray(pulse?.tags) ? pulse.tags : null;
+
+  // OTX typically uses objects like {indicator, type}.
+  const indicators = Array.isArray(pulse?.indicators) ? pulse.indicators : [];
+  for (const ind of indicators) {
+    const indicator = String(ind?.indicator || ind?.value || '').trim();
+    if (!indicator) continue;
+    const type = String(ind?.type || guessType(indicator) || 'auto').toLowerCase();
+    out.push({
+      indicator,
+      type,
+      context,
+      tags,
+      sources: ['otx'],
+      firstSeen: created
+    });
+  }
+
+  return out;
+}
+
+async function fetchFeedSnapshot({ sources = ['kev', 'otx'], limit = 100, days = 7 }) {
+  const enabled = new Set(sources);
+  const items = [];
+  const errors = {};
+
+  // 1) CISA KEV (CVE-only)
+  if (enabled.has('kev')) {
+    try {
+      const cacheFile = path.join(CACHE_DIR, 'cisa_kev.json');
+      let kev = readJsonIfFresh(cacheFile, 6 * 60 * 60 * 1000);
+      if (!kev) {
+        const res = await fetch('https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json');
+        if (!res.ok) throw new Error(`KEV ${res.status}`);
+        kev = await res.json();
+        try { fs.writeFileSync(cacheFile, JSON.stringify(kev)); } catch {}
+      }
+
+      const windowMs = Math.max(1, Number(days) || 7) * 24 * 60 * 60 * 1000;
+      const cutoff = Date.now() - windowMs;
+      const vulns = Array.isArray(kev?.vulnerabilities) ? kev.vulnerabilities : [];
+      for (const v of vulns) {
+        const cve = String(v?.cveID || '').trim();
+        if (!cve) continue;
+        const dateAdded = v?.dateAdded ? new Date(v.dateAdded).getTime() : null;
+        if (dateAdded && dateAdded < cutoff) continue;
+        items.push({
+          indicator: cve,
+          type: 'cve',
+          context: v?.vulnerabilityName || v?.shortDescription || null,
+          tags: ['kev'],
+          sources: ['kev'],
+          firstSeen: v?.dateAdded || null
+        });
+        if (items.length >= limit) break;
+      }
+    } catch (e) {
+      errors.kev = String(e?.message || e);
+    }
+  }
+
+  // 2) OTX pulses → indicators
+  if (enabled.has('otx') && items.length < limit) {
+    try {
+      const snap = await fetchOtxPulseSnapshot({ limit: Math.min(50, Math.max(1, Number(limit) || 30)) });
+      if (snap.error) errors.otx = snap.error;
+
+      for (const p of snap.pulses || []) {
+        const inds = normalizePulseIndicators(p);
+        for (const i of inds) {
+          items.push(i);
+          if (items.length >= limit) break;
+        }
+        if (items.length >= limit) break;
+      }
+    } catch (e) {
+      errors.otx = String(e?.message || e);
+    }
+  }
+
+  // Dedupe
+  const seen = new Set();
+  const deduped = [];
+  for (const i of items) {
+    const k = `${String(i.type || 'auto').toLowerCase()}:${i.indicator}`;
+    if (seen.has(k)) continue;
+    seen.add(k);
+    deduped.push(i);
+  }
+
+  return {
+    schema: 'ti-aggregator:feed-snapshot:v0',
+    generatedAt: new Date().toISOString(),
+    sources: Array.from(enabled),
+    limit: Number(limit) || 100,
+    days: Number(days) || 7,
+    count: deduped.length,
+    items: deduped,
+    errors: Object.keys(errors).length ? errors : undefined
+  };
+}
+
 // --- MCP server wiring ---
-const mcpServer = new McpServer({ name: 'ti-aggregator', version: '0.0.2' });
+const mcpServer = new McpServer({ name: 'ti-aggregator', version: '0.0.3' });
 
 mcpServer.registerTool(
   'enrich_indicator',
@@ -389,6 +534,19 @@ mcpServer.registerTool(
     }
   },
   async (args) => ({ content: [{ type: 'text', text: JSON.stringify(await bulkEnrich(args), null, 2) }] })
+);
+
+mcpServer.registerTool(
+  'fetch_feed_snapshot',
+  {
+    description: 'Fetch a normalized TI feed snapshot (v0: CISA KEV + OTX pulses → indicators). Intended for collectors; not a scoring/judgment tool.',
+    inputSchema: {
+      sources: z.array(z.enum(['kev', 'otx'])).default(['kev', 'otx']),
+      limit: z.number().int().min(1).max(500).default(100),
+      days: z.number().int().min(1).max(90).default(7)
+    }
+  },
+  async (args) => ({ content: [{ type: 'text', text: JSON.stringify(await fetchFeedSnapshot(args), null, 2) }] })
 );
 
 mcpServer.registerTool(
