@@ -1,0 +1,13 @@
+[Unit]
+Description=Jarvis SecOps Dashboard
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/security-lab
+ExecStart=/usr/bin/npm run dashboard
+Restart=on-failure
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=default.target

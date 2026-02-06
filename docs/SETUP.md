@@ -14,7 +14,31 @@ This repo is intended to be **clone-and-run** for a local SecOps lab built aroun
 - OpenClaw installed and running on the same host (Gateway)
 - `uvx` available (used to launch `purple-mcp` via stdio)
 
-## 1) Clone
+## 1) Automated / agent-friendly bootstrap
+
+If you have an OpenClaw agent (or are comfortable running a shell script) on the target host, you can bootstrap the lab in one shot:
+
+```bash
+# On the target host
+bash -c "curl -sSf https://raw.githubusercontent.com/lascalasecurity/Jarvis-secops/main/scripts/bootstrap.sh -o /tmp/secops-bootstrap.sh && chmod +x /tmp/secops-bootstrap.sh && /tmp/secops-bootstrap.sh"
+```
+
+What this does:
+- Clones the repo into `~/security-lab` (or uses it if already cloned).
+- Runs `npm install`.
+- Creates `mcp/.env.local` with commented placeholders (you must edit with your own keys).
+- Installs a user-level systemd service for the dashboard and enables it.
+- Attempts to apply the bundled OpenClaw cron config from `docs/cron-jobs.json`.
+
+After the script finishes:
+- Edit `~/security-lab/mcp/.env.local` with your API keys/URLs.
+- Hit `http://127.0.0.1:18888` to confirm the dashboard.
+- If OpenClaw is installed, run `openclaw cron list` and confirm the `security-lab:*` jobs are present.
+
+---
+
+## 2) Manual clone (if you prefer to do it yourself)
+
 
 ```bash
 git clone git@github.com:lascalasecurity/Jarvis-secops.git security-lab
@@ -22,7 +46,7 @@ cd security-lab
 npm install
 ```
 
-## 2) Configure secrets (DO NOT COMMIT)
+## 3) Configure secrets (DO NOT COMMIT)
 
 All secrets are local-only.
 
@@ -42,7 +66,7 @@ cp mcp/.env.local.example mcp/.env.local
 
 This file is gitignored (`mcp/.env.local`).
 
-## 3) Validate MCP connectivity (smoke tests)
+## 4) Validate MCP connectivity (smoke tests)
 
 ```bash
 set -a && source mcp/.env.local && set +a
@@ -60,7 +84,7 @@ npx -y mcporter --config config/mcporter.json call purple-mcp.list_alerts first=
 npx -y mcporter --config config/mcporter.json call ti-aggregator.fetch_feed_snapshot sources=kev sources=otx limit=5 days=7
 ```
 
-## 4) Run helper collectors (deterministic)
+## 5) Run helper collectors (deterministic)
 
 ```bash
 set -a && source mcp/.env.local && set +a
@@ -74,7 +98,7 @@ node agents/ti-analyst/runner.js --mode collect --limit 100
 Artifacts land under:
 - `artifacts/cron/<agent>/<stamp>/...`
 
-## 5) Run the dashboard (local-only)
+## 6) Run the dashboard (local-only)
 
 ```bash
 npm run dashboard
@@ -84,7 +108,7 @@ Default: `http://127.0.0.1:18888`
 
 The dashboard watches `artifacts/cron/**` and updates live.
 
-## 6) OpenClaw cron jobs
+## 7) OpenClaw cron jobs
 
 This repo assumes you will create OpenClaw cron jobs to run the **reasoning agents** on a schedule.
 

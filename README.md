@@ -22,6 +22,28 @@ A local-only SecOps lab built for **autonomous security operations**:
 
 ## Quick start
 
+### Option A: one-shot bootstrap (agent-friendly)
+
+If you have an OpenClaw agent (or you’re at a shell) on the target host, you can let it do most of the work:
+
+```bash
+bash -c "curl -sSf https://raw.githubusercontent.com/lascalasecurity/Jarvis-secops/main/scripts/bootstrap.sh -o /tmp/secops-bootstrap.sh && chmod +x /tmp/secops-bootstrap.sh && /tmp/secops-bootstrap.sh"
+```
+
+This will:
+- Clone (or reuse) the repo at `~/security-lab`
+- Run `npm install`
+- Create `mcp/.env.local` with placeholders for your keys
+- Install + enable the `secops-dashboard` user service
+- Try to apply the bundled cron config from `docs/cron-jobs.json`
+
+You then:
+- Edit `~/security-lab/mcp/.env.local` with your own API keys
+- Visit `http://127.0.0.1:18888` for the dashboard
+- Run `openclaw cron list` to confirm `security-lab:*` jobs
+
+### Option B: manual setup
+
 1) Install deps:
 ```bash
 npm install
