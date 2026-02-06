@@ -84,6 +84,138 @@ function guessRunTimestamp(runDirName) {
   return null;
 }
 
+function stripMarkdown(s) {
+  // very lightweight “good enough” preview: remove code fences + headings + bullets
+  return String(s)
+    .replace(/```[\s\S]*?```/g, '')
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/^\s*[-*+]\s+/gm, '')
+    .replace(/^\s*\d+\.\s+/gm, '')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/\*([^*]+)\*/g, '$1')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+async function tryReadPreviewMarkdown(runDirFull, files) {
+  const primary = files.includes('report.md') ? 'report.md' : files.includes('digest.md') ? 'digest.md' : null;
+  if (!primary) return { primaryMarkdown: null, preview: null };
+  try {
+    const text = await readText(path.join(runDirFull, primary));
+    const preview = stripMarkdown(text).slice(0, 420);
+    return { primaryMarkdown: primary, preview };
+  } catch {
+    return { primaryMarkdown: primary, preview: null };
+  }
+}
+
+async function computeDeterministicSummary(agent, runDirFull, files) {
+  try {
+    if (agent === 'security-analyst' && files.includes('alerts.json')) {
+      const j = await readJson(path.join(runDirFull, 'alerts.json'));
+      const nodes = (j?.edges || []).map((e) => e?.node).filter(Boolean);
+      const bySeverity = {};
+      const byStatus = {};
+      for (const n of nodes) {
+        const sev = String(n.severity || 'UNKNOWN').toUpperCase();
+        const st = String(n.status || 'UNKNOWN').toUpperCase();
+        bySeverity[sev] = (bySeverity[sev] || 0) + 1;
+        byStatus[st] = (byStatus[st] || 0) + 1;
+      }
+      const top = nodes
+        .slice()
+        .sort((a, b) => String(b.detected_at || '').localeCompare(String(a.detected_at || '')))
+        .slice(0, 3)
+        .map((n) => ({
+          id: n.id,
+          severity: n.severity,
+          status: n.status,
+          name: n.name,
+          asset: n.asset?.name || null,
+          detected_at: n.detected_at || null
+        }));
+
+      return {
+        kind: 'alerts',
+        total: nodes.length,
+        bySeverity,
+        byStatus,
+        top
+      };
+    }
+
+    if (agent === 'vuln-manager' && files.includes('vulnerabilities.raw.json')) {
+      const j = await readJson(path.join(runDirFull, 'vulnerabilities.raw.json'));
+      const nodes = (j?.edges || []).map((e) => e?.node).filter(Boolean);
+      const bySeverity = {};
+      let exploited = 0;
+      let kev = 0;
+      for (const n of nodes) {
+        const sev = String(n.severity || 'UNKNOWN').toUpperCase();
+        bySeverity[sev] = (bySeverity[sev] || 0) + 1;
+        if (n.exploited_in_the_wild === true || n.exploitedInTheWild === true) exploited++;
+        if (n.kev_available === true || n.kevAvailable === true) kev++;
+      }
+      const top = nodes
+        .slice()
+        .sort((a, b) => {
+          const sa = String(a.severity || '').toUpperCase();
+          const sb = String(b.severity || '').toUpperCase();
+          const rank = { CRITICAL: 4, HIGH: 3, MEDIUM: 2, LOW: 1, INFO: 0, UNKNOWN: -1 };
+          return (rank[sb] ?? -1) - (rank[sa] ?? -1);
+        })
+        .slice(0, 5)
+        .map((n) => ({
+          id: n.id,
+          severity: n.severity,
+          name: n.name,
+          cve: n.cve || null,
+          asset: n.asset?.name || n.asset || null
+        }));
+
+      return {
+        kind: 'vulns',
+        total: nodes.length,
+        bySeverity,
+        exploitedInTheWild: exploited,
+        kevAvailable: kev,
+        top
+      };
+    }
+
+    if (agent === 'ti-digest' && files.includes('ti_iocs.json')) {
+      const j = await readJson(path.join(runDirFull, 'ti_iocs.json'));
+      const iocs = Array.isArray(j?.iocs) ? j.iocs : [];
+      const byType = {};
+      let kevCount = 0;
+      const kevCves = [];
+      for (const i of iocs) {
+        const t = String(i.type || 'unknown').toLowerCase();
+        byType[t] = (byType[t] || 0) + 1;
+        const sources = Array.isArray(i.sources) ? i.sources : [];
+        if (sources.includes('kev')) {
+          kevCount++;
+          if (t === 'cve') kevCves.push(i.indicator);
+        }
+      }
+
+      return {
+        kind: 'ti',
+        total: iocs.length,
+        byType,
+        kevCount,
+        topKevCves: kevCves.slice(0, 6)
+      };
+    }
+
+    // Generic / unknown agent: no deterministic summary yet.
+    return null;
+  } catch {
+    return { kind: 'error', error: 'summary_parse_failed' };
+  }
+}
+
 async function getLatestRun(agent) {
   const agentDir = path.join(ARTIFACTS_ROOT, agent);
   const dirs = await listDirs(agentDir);
@@ -95,8 +227,8 @@ async function getLatestRun(agent) {
   const full = path.join(agentDir, latest);
   const files = await listFiles(full);
 
-  // prefer report.md, fall back to digest.md
-  const preferred = files.includes('report.md') ? 'report.md' : files.includes('digest.md') ? 'digest.md' : null;
+  const { primaryMarkdown, preview } = await tryReadPreviewMarkdown(full, files);
+  const summary = await computeDeterministicSummary(agent, full, files);
 
   return {
     id: idFromPath(path.join(agent, latest)),
@@ -106,7 +238,9 @@ async function getLatestRun(agent) {
     ts: guessRunTimestamp(latest),
     path: path.join(agent, latest),
     files,
-    primaryMarkdown: preferred
+    primaryMarkdown,
+    preview,
+    summary
   };
 }
 

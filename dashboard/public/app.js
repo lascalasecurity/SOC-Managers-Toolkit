@@ -24,6 +24,44 @@ function esc(s) {
   return String(s).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
 }
 
+function fmtSummary(summary) {
+  if (!summary) return [];
+
+  if (summary.kind === 'alerts') {
+    const sev = summary.bySeverity || {};
+    const st = summary.byStatus || {};
+    return [
+      ['Alerts', summary.total],
+      ['NEW', st.NEW ?? 0],
+      ['CRIT/HIGH', `${sev.CRITICAL ?? 0}/${sev.HIGH ?? 0}`]
+    ];
+  }
+
+  if (summary.kind === 'vulns') {
+    const sev = summary.bySeverity || {};
+    return [
+      ['Findings', summary.total],
+      ['HIGH', sev.HIGH ?? 0],
+      ['Exploited', summary.exploitedInTheWild ?? 0]
+    ];
+  }
+
+  if (summary.kind === 'ti') {
+    const byType = summary.byType || {};
+    return [
+      ['IOCs', summary.total],
+      ['KEV', summary.kevCount ?? 0],
+      ['CVEs', byType.cve ?? 0]
+    ];
+  }
+
+  if (summary.kind === 'error') {
+    return [['Summary', 'parse failed']];
+  }
+
+  return [];
+}
+
 function renderTiles(overview) {
   const el = $('#tiles');
   el.innerHTML = '';
@@ -32,6 +70,13 @@ function renderTiles(overview) {
     const latest = a.latest;
     const badgeClass = latest ? 'ok' : 'warn';
     const badgeText = latest ? 'latest' : 'no data';
+
+    const rows = fmtSummary(latest?.summary);
+    const rowsHtml = rows
+      .map(([k, v]) => `<div class="kv__row"><div class="kv__k">${esc(k)}</div><div class="kv__v">${esc(v)}</div></div>`)
+      .join('');
+
+    const preview = latest?.preview ? `<div class="tile__preview">${esc(latest.preview)}${latest.preview.length >= 420 ? '…' : ''}</div>` : '';
 
     const tile = document.createElement('div');
     tile.className = 'tile';
@@ -45,8 +90,9 @@ function renderTiles(overview) {
       </div>
       <div class="kv">
         <div class="kv__row"><div class="kv__k">Latest run</div><div class="kv__v">${esc(latest?.run || '—')}</div></div>
-        <div class="kv__row"><div class="kv__k">Files</div><div class="kv__v">${esc(latest?.files?.length ?? 0)}</div></div>
+        ${rowsHtml}
       </div>
+      ${preview}
     `;
 
     tile.addEventListener('click', async () => {
