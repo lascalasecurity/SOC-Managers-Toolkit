@@ -62,6 +62,18 @@ function fmtSummary(summary) {
   return [];
 }
 
+function formatStamp(stamp) {
+  if (!stamp) return '—';
+  const s = String(stamp);
+  // YYYYMMDD or YYYYMMDD-HHMM
+  const m = s.match(/^(\d{4})(\d{2})(\d{2})(?:-(\d{2})(\d{2}))?$/);
+  if (!m) return s;
+  const [, y, mo, d, hh, mi] = m;
+  const yy = y.slice(2);
+  if (hh && mi) return `${mo}/${d}/${yy} ${hh}:${mi}:00`;
+  return `${mo}/${d}/${yy}`;
+}
+
 function renderTiles(overview) {
   const el = $('#tiles');
   el.innerHTML = '';
@@ -89,7 +101,7 @@ function renderTiles(overview) {
         <div class="badge ${badgeClass}">${badgeText}</div>
       </div>
       <div class="kv">
-        <div class="kv__row"><div class="kv__k">Latest run</div><div class="kv__v">${esc(latest?.run || '—')}</div></div>
+        <div class="kv__row"><div class="kv__k">Latest run</div><div class="kv__v">${esc(formatStamp(latest?.ts || latest?.run || ''))}</div></div>
         ${rowsHtml}
       </div>
       ${preview}
@@ -136,7 +148,7 @@ async function loadRuns(agent) {
     item.className = 'runItem';
     item.innerHTML = `
       <div class="runItem__name">${esc(r.run)}</div>
-      <div class="runItem__ts">${esc(r.ts || '')}</div>
+      <div class="runItem__ts">${esc(formatStamp(r.ts || r.run || ''))}</div>
     `;
     item.addEventListener('click', async () => {
       await openRun(r.path, data.agentName);

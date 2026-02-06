@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 import path from 'node:path';
+import fs from 'node:fs';
 
 import { ensureDir, writeJson, writeText } from '../../lib/fs.js';
-import { purpleAi, getTimestampRange, runPowerQuery } from '../../lib/purple.js';
 import { bulkEnrich } from '../../lib/ti.js';
 
 const CWD = process.env.SECURITY_LAB_CWD || process.cwd();
@@ -19,59 +19,56 @@ async function main() {
   const outDir = path.join(CWD, 'artifacts', 'cron', 'proactive-hunter', ymd);
   ensureDir(outDir);
 
-  // v0: until we ingest real feeds, use a small seed list that rotates later.
-  const seedIocs = ['CVE-2021-44228', 'CVE-2023-34362', 'example.com'];
-  const enriched = await bulkEnrich({ cwd: CWD, indicators: seedIocs, type: 'auto' });
-  writeJson(path.join(outDir, 'ti.json'), { seedIocs, enriched });
+  // Source intel from TI Analyst feed (ti_iocs.json)
+  const tiRoot = path.join(CWD, 'artifacts', 'cron', 'ti-digest');
+  const tiDirs = fs.existsSync(tiRoot) ? fs.readdirSync(tiRoot).filter((d) => /^\d{8}$/.test(d)).sort().reverse() : [];
+  const tiDir = tiDirs[0] ? path.join(tiRoot, tiDirs[0]) : null;
+  const tiPath = tiDir ? path.join(tiDir, 'ti_iocs.json') : null;
 
-  const ai = await purpleAi({ cwd: CWD, query: `Using these indicators (CVE/domain) as starting points: ${seedIocs.join(', ')}. Propose 3 PowerQueries to hunt for related exploitation/behavior in the last 7 days. Provide the PowerQueries.` });
-  writeJson(path.join(outDir, 'purple_ai.json'), ai);
-
-  // Extract PowerQueries from Purple AI text (very simple heuristic: code blocks or lines starting with SELECT)
-  const text = ai.text ?? (Array.isArray(ai.content) && ai.content[0]?.text) ?? '';
-  const queries = [];
-  if (text) {
-    const codeBlockRegex = /```sql[\s\S]*?```/gi;
-    let m;
-    while ((m = codeBlockRegex.exec(text)) && queries.length < 5) {
-      const q = m[0].replace(/```sql|```/gi, '').trim();
-      if (q) queries.push(q);
-    }
-    if (!queries.length) {
-      // Fallback: grab lines that look like SQL SELECTs
-      for (const line of text.split('\n')) {
-        if (/^\s*select\s+/i.test(line)) queries.push(line.trim());
-        if (queries.length >= 5) break;
-      }
-    }
-  }
-
-  const range = await getTimestampRange({ cwd: CWD, hours: 24 * 7 });
-  const pqResults = [];
-  for (let i = 0; i < queries.length; i++) {
-    const q = queries[i];
+  let ti = { iocs: [] };
+  if (tiPath && fs.existsSync(tiPath)) {
     try {
-      const res = await runPowerQuery({ cwd: CWD, query: q, startMs: range.start_timestamp, endMs: range.end_timestamp });
-      pqResults.push({ index: i, query: q, resultSummary: res?.summary ?? null, result: res });
-      writeJson(path.join(outDir, `powerquery_${i}.json`), res);
-    } catch (e) {
-      pqResults.push({ index: i, query: q, error: String(e?.message || e) });
+      ti = JSON.parse(fs.readFileSync(tiPath, 'utf8'));
+    } catch {
+      ti = { iocs: [] };
     }
   }
-  writeJson(path.join(outDir, 'powerqueries.json'), { queries, pqResults });
+
+  const allIocs = Array.isArray(ti?.iocs) ? ti.iocs : [];
+
+  // Deterministic selection: KEV CVEs first, then other CVEs, then domains/IPs.
+  const kevCves = allIocs.filter((x) => x?.type === 'cve' && Array.isArray(x?.sources) && x.sources.includes('kev'));
+  const otherCves = allIocs.filter((x) => x?.type === 'cve' && !(Array.isArray(x?.sources) && x.sources.includes('kev')));
+  const infra = allIocs.filter((x) => ['domain', 'ip', 'url', 'hash'].includes(String(x?.type || '').toLowerCase()));
+
+  const selected = [...kevCves, ...otherCves, ...infra]
+    .map((x) => ({ indicator: x.indicator, type: x.type || 'auto', context: x.context ?? x.threatContext ?? null, sources: x.sources ?? null }))
+    .filter((x) => x.indicator)
+    .slice(0, 15);
+
+  const indicators = selected.map((x) => x.indicator);
+  const enriched = indicators.length ? await bulkEnrich({ cwd: CWD, indicators, type: 'auto' }) : { count: 0, results: [] };
+
+  // Minimal collector output for reasoning agent: TI feed context + selected IOCs + optional enrichment.
+  writeJson(path.join(outDir, 'ti_iocs.selected.json'), {
+    tiFeedPath: tiPath ? path.relative(CWD, tiPath) : null,
+    tiFeedCount: allIocs.length,
+    selected,
+    enriched
+  });
 
   let md = '';
-  md += `Proactive Threat Hunter — weekly — ${ymd} PT\n\n`;
-  md += `Seed intel (v0): ${seedIocs.join(', ')}\n`;
-  md += `Purple AI proposed hunts (executed ${pqResults.length} PowerQueries over last 7 days):\n`;
-  if (queries.length) {
-    queries.forEach((q, idx) => {
-      md += `- PQ${idx + 1}: ${q.slice(0, 120).replace(/\s+/g, ' ')}${q.length > 120 ? ' ...' : ''}\n`;
+  md += `Proactive Threat Hunter collector — ${ymd} PT\n\n`;
+  md += `TI feed: ${tiPath ? path.relative(CWD, tiPath) : 'none'}\n`;
+  md += `Selected IOCs for hunts: ${selected.length}\n`;
+  if (selected.length) {
+    selected.forEach((x, idx) => {
+      md += `- IOC${idx + 1}: ${x.type || 'auto'}:${x.indicator}\n`;
     });
   } else {
-    md += `- No executable PowerQueries could be parsed from Purple AI response.\n`;
+    md += `- No IOCs selected (empty ti_iocs.json or parse failure).\n`;
   }
-  md += `\nArtifacts: ${path.relative(CWD, outDir)}/ (ti.json, purple_ai.json, powerqueries.json, powerquery_*.json, report.md)\n`;
+  md += `\nArtifacts: ${path.relative(CWD, outDir)}/ (ti_iocs.selected.json, report.md)\n`;
 
   writeText(path.join(outDir, 'report.md'), md);
   process.stdout.write(md);
