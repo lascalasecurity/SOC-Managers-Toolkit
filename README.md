@@ -1,36 +1,60 @@
-Autonomous Security Lab (ASL)
+# Jarvis SecOps Lab (security-lab)
 
-Goal
-- Stand up an orchestrated swarm of agents (LLM + tool-using) to run SecOps tasks end-to-end: recon, detection, response, hardening, reporting.
-- Operate entirely on this sandboxed host; no extra container/VM layers. Primary capability surface is an external security-platform MCP server plus local utilities.
+A local-only SecOps lab built for **autonomous security operations**:
+- Reasoning-first agents (triage, TI, vuln mgmt, hunting, SOC Manager QA)
+- Deterministic helper collectors that write durable artifacts
+- A standalone interactive HTML dashboard that updates as new runs land
 
-High-level Phases
-1) Foundations
-   - Define threat model, trust boundaries, and RBAC.
-   - Connect to the security-platform MCP server; add local utility MCPs (fs/http/git).
-   - Establish event bus, runbook format, and logging.
-2) Orchestration MVP
-   - Single-tenant workflow: task intake → plan → execute with MCP tools → report.
-   - Human-in-the-loop checkpoints.
-3) Autonomy & Scale
-   - Multi-agent choreography (planner, operators, reporter).
-   - Scheduling, SLAs, retries, rollbacks.
-4) Safety & Policy
-   - Policy enforcement, egress guards (via MCP allowlists/policies).
-   - Secrets, attestation, drift detection.
-5) Integrations
-   - Asset inventory, ticketing, alerting, dashboards (when external hooks are permitted).
+## What you get
 
-Key Properties
-- Deterministic where possible (versioned tools, pinned models, seeds).
-- Observable: structured logs, spans, audit trails, artifacts.
-- Reproducible: runbooks + env snapshots.
-- Safe-by-default: least privilege, outbound allowlists.
+- **MCP stack (via MCPorter)**
+  - `purple-mcp` (SentinelOne Purple)
+  - `ti-aggregator` (local Node MCP for enrichment + feed snapshots)
+- **Agents (conceptual)**
+  - Security Analyst (30m)
+  - TI Digest (daily)
+  - Vulnerability Manager (daily)
+  - Threat Hunter + Proactive Threat Hunter (weekly)
+  - SOC Manager (weekly overview + QA)
+- **Artifacts-first workflow**
+  - Everything writes to `artifacts/cron/<agent>/<run>/...`
+  - Dashboard reads those artifacts (no dependence on chat delivery)
 
-Quick Start (proposed)
-- ./docs/ARCHITECTURE.md → target topology
-- ./docs/RUNBOOKS/* → YAML workflows
-- ./orchestrator/* → agent router + guardrails
-- ./mcp/* → MCP server configs
+## Quick start
 
-Next: see TODO.md for immediate asks.
+1) Install deps:
+```bash
+npm install
+```
+
+2) Configure keys (local-only):
+```bash
+cp mcp/.env.local.example mcp/.env.local
+# edit mcp/.env.local and add your keys
+```
+
+3) Smoke test MCP:
+```bash
+set -a && source mcp/.env.local && set +a
+npx -y mcporter --config config/mcporter.json list-tools
+npx -y mcporter --config config/mcporter.json call purple-mcp.list_alerts first=1
+```
+
+4) Run the dashboard:
+```bash
+npm run dashboard
+# http://127.0.0.1:18888
+```
+
+## Docs
+
+- `docs/AGENTS.md` — roles, schedules, artifact contracts
+- `docs/SETUP.md` — clone-and-run instructions (keys, smoke tests, dashboard)
+- `docs/ARCHITECTURE-diagram.html` — point-in-time architecture diagram
+
+## Security / secrets
+
+- **Never commit keys.** Local files are gitignored:
+  - `mcp/.env.local`
+  - `mcp/servers.local.json`
+  - `artifacts/**`, `runs/**`, `logs/**`
