@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>SecOps Lab – Layered Architecture</title>
+  <style>
+    :root {
+      --bg: #020617;
+      --bg-alt: #020617;
+      --panel: #020617;
+      --accent: #22c55e;
+      --accent-soft: rgba(34, 197, 94, 0.18);
+      --border: rgba(148, 163, 184, 0.6);
+      --text: #e5e7eb;
+      --muted: #9ca3af;
+      --headline: #f9fafb;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      padding: 24px;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+      background:
+        radial-gradient(circle at top, rgba(15,23,42,0.95) 0, #020617 40%, #000 85%),
+        #000;
+      color: var(--text);
+    }
+
+    h1 {
+      margin: 0 0 4px;
+      font-size: 24px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--headline);
+    }
+
+    .subtitle {
+      font-size: 13px;
+      color: var(--muted);
+      margin-bottom: 20px;
+    }
+
+    .frame {
+      border-radius: 18px;
+      border: 1px solid rgba(148, 163, 184, 0.4);
+      padding: 20px 20px 16px;
+      background:
+        radial-gradient(circle at top left, rgba(34, 197, 94, 0.12), transparent 55%),
+        radial-gradient(circle at bottom right, rgba(56, 189, 248, 0.16), transparent 60%),
+        rgba(15, 23, 42, 0.98);
+      box-shadow:
+        0 0 0 1px rgba(15, 23, 42, 0.9),
+        0 28px 80px rgba(15, 23, 42, 0.9);
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    .layers {
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+
+    .layer {
+      border-radius: 14px;
+      padding: 14px 16px 12px;
+      border: 1px solid rgba(30, 64, 175, 0.6);
+      background: linear-gradient(135deg, rgba(15, 23, 42, 0.96), rgba(15, 23, 42, 0.94));
+      position: relative;
+      overflow: hidden;
+    }
+
+    .layer::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(circle at top left, rgba(34, 197, 94, 0.06), transparent 55%),
+        radial-gradient(circle at bottom right, rgba(59, 130, 246, 0.1), transparent 60%);
+      opacity: 0.85;
+      pointer-events: none;
+    }
+
+    .layer-header {
+      position: relative;
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    .layer-badge {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+      color: var(--accent);
+    }
+
+    .layer-title {
+      font-size: 16px;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--headline);
+    }
+
+    .layer-desc {
+      position: relative;
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 12px;
+      max-width: 900px;
+    }
+
+    .grid {
+      position: relative;
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .grid.agents {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    .grid.mcps {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      max-width: 720px;
+    }
+
+    .grid.feeds {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .tile {
+      position: relative;
+      border-radius: 12px;
+      padding: 10px 10px 9px;
+      border: 1px solid rgba(148, 163, 184, 0.55);
+      background:
+        linear-gradient(135deg, rgba(15, 23, 42, 0.98), rgba(2, 6, 23, 0.98));
+      box-shadow: 0 10px 30px rgba(15, 23, 42, 0.85);
+      min-height: 82px;
+    }
+
+    .tile--agent {
+      border-color: rgba(34, 197, 94, 0.7);
+      box-shadow: 0 0 0 1px rgba(34, 197, 94, 0.16), 0 18px 40px rgba(15, 23, 42, 0.9);
+    }
+
+    .tile--jarvis {
+      border-color: rgba(56, 189, 248, 0.8);
+      box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.22), 0 18px 40px rgba(15, 23, 42, 0.9);
+    }
+
+    .tile--mcp {
+      border-color: rgba(56, 189, 248, 0.75);
+    }
+
+    .tile--feed {
+      border-color: rgba(249, 115, 22, 0.8);
+    }
+
+    .tile-title {
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 4px;
+      color: var(--headline);
+    }
+
+    .tile-subtitle {
+      font-size: 11px;
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+
+    .pill-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      margin-bottom: 3px;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 6px;
+      border-radius: 999px;
+      border: 1px solid rgba(148, 163, 184, 0.5);
+      font-size: 9px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #9ca3af;
+    }
+
+    .pill--layer {
+      border-color: rgba(34, 197, 94, 0.65);
+      color: rgba(190, 242, 100, 0.95);
+    }
+
+    .pill--role {
+      border-color: rgba(56, 189, 248, 0.7);
+      color: rgba(191, 219, 254, 0.95);
+    }
+
+    .pill--system {
+      border-color: rgba(148, 163, 184, 0.8);
+      color: rgba(209, 213, 219, 0.96);
+    }
+
+    .tile-body {
+      font-size: 11px;
+      color: #d1d5db;
+      line-height: 1.4;
+    }
+
+    .tile-body strong {
+      color: #e5e7eb;
+      font-weight: 600;
+    }
+
+    .note {
+      font-size: 10px;
+      color: #6b7280;
+      margin-top: 4px;
+    }
+
+    @media (max-width: 960px) {
+      .grid.agents { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .grid.mcps { grid-template-columns: repeat(1, minmax(0, 1fr)); }
+      .grid.feeds { grid-template-columns: repeat(1, minmax(0, 1fr)); }
+    }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <h1>SecOps Lab – Layered Architecture</h1>
+    <div class="subtitle">High-level view of how OpenClaw, agents, MCPs, and external feeds work together</div>
+
+    <div class="layers">
+      <!-- LAYER 1: Gateway & Agentic Framework -->
+      <section class="layer">
+        <div class="layer-header">
+          <div class="layer-badge">Layer 1</div>
+          <div class="layer-title">OpenClaw Gateway &amp; Agentic Framework</div>
+        </div>
+        <div class="layer-desc">
+          The foundational platform everything runs on. OpenClaw provides a local gateway, session management, and the agentic framework that powers Jarvis and all SecOps agents.
+          The TUI / CLI is the control surface to start, inspect, and manage agents and their cron schedules.
+        </div>
+
+        <div class="grid" style="grid-template-columns: repeat(2, minmax(0, 1fr)); max-width: 720px;">
+          <div class="tile tile--jarvis">
+            <div class="pill-row">
+              <span class="pill pill--layer">Core Platform</span>
+              <span class="pill pill--system">Local Only</span>
+            </div>
+            <div class="tile-title">OpenClaw Gateway</div>
+            <div class="tile-subtitle">Sessions · Cron · Tools · TUI/CLI</div>
+            <div class="tile-body">
+              Manages isolated reasoning sessions, cron jobs, and tools (file access, web, MCPs). The TUI/CLI is how you inspect status,
+              debug agents, and see what the system is doing under the hood.
+            </div>
+          </div>
+
+          <div class="tile tile--agent">
+            <div class="pill-row">
+              <span class="pill pill--role">Orchestrator</span>
+            </div>
+            <div class="tile-title">Jarvis</div>
+            <div class="tile-subtitle">Your SecOps copilot</div>
+            <div class="tile-body">
+              Frontline assistant that lives on top of the gateway: coordinates agents, reads dashboards and artifacts,
+              and turns raw outputs into human-friendly guidance and decisions.
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- LAYER 2: Agents -->
+      <section class="layer">
+        <div class="layer-header">
+          <div class="layer-badge">Layer 2</div>
+          <div class="layer-title">Domain Agents</div>
+        </div>
+        <div class="layer-desc">
+          Specialized reasoning agents focused on different parts of the SecOps story. Each one consumes telemetry and intelligence,
+          then writes structured artifacts and narratives the SOC can act on.
+        </div>
+
+        <div class="grid agents">
+          <!-- Row 1: primary analysts -->
+          <div class="tile tile--agent">
+            <div class="pill-row">
+              <span class="pill pill--role">Alerts</span>
+            </div>
+            <div class="tile-title">Security Analyst</div>
+            <div class="tile-subtitle">30m alert triage</div>
+            <div class="tile-body">
+              Continuously pulls alerts from SentinelOne Purple and surrounding telemetry, prioritizes them by risk,
+              and produces clear “act-first” guidance for suspected ransomware, RCE, and identity abuse.
+            </div>
+          </div>
+
+          <div class="tile tile--agent">
+            <div class="pill-row">
+              <span class="pill pill--role">Threat Intel</span>
+            </div>
+            <div class="tile-title">TI Digest</div>
+            <div class="tile-subtitle">Daily TI overview</div>
+            <div class="tile-body">
+              Aggregates external threat intelligence (KEV, campaigns, IOCs), filters it for what matters to this environment,
+              and curates a daily digest that hunts and SOC leadership can pivot from.
+            </div>
+          </div>
+
+          <div class="tile tile--agent">
+            <div class="pill-row">
+              <span class="pill pill--role">Vulnerabilities</span>
+            </div>
+            <div class="tile-title">Vulnerability Manager</div>
+            <div class="tile-subtitle">Daily risk posture</div>
+            <div class="tile-body">
+              Tracks vulnerabilities across assets, correlates them with KEV and exploitation-in-the-wild,
+              and outputs prioritized remediation plans instead of just a wall of CVEs.
+            </div>
+          </div>
+
+          <div class="tile tile--agent">
+            <div class="pill-row">
+              <span class="pill pill--role">Executive View</span>
+            </div>
+            <div class="tile-title">SOC Manager</div>
+            <div class="tile-subtitle">Daily &amp; weekly summaries</div>
+            <div class="tile-body">
+              Pulls together alerts, TI, vulns, and hunts into daily and weekly reports that a CISO or SOC manager can actually read:
+              trends, priorities, and where the coverage gaps are.
+            </div>
+          </div>
+
+          <!-- Row 2: hunters + janitor -->
+          <div class="tile tile--agent">
+            <div class="pill-row">
+              <span class="pill pill--role">Hunting</span>
+            </div>
+            <div class="tile-title">Threat Hunter</div>
+            <div class="tile-subtitle">Environment-driven hunts</div>
+            <div class="tile-body">
+              Uses SentinelOne Purple to hunt for follow-on activity and lateral movement based on what alerts have already seen:
+              credential theft, movement, and post-exploitation behavior in this environment.
+            </div>
+          </div>
+
+          <div class="tile tile--agent">
+            <div class="pill-row">
+              <span class="pill pill--role">Proactive Hunting</span>
+            </div>
+            <div class="tile-title">Proactive Threat Hunter</div>
+            <div class="tile-subtitle">TI-driven hunts</div>
+            <div class="tile-body">
+              Takes curated TI IOCs from the TI Digest and looks for evidence of those campaigns in SentinelOne data,
+              even when they haven’t triggered visible alerts yet.
+            </div>
+          </div>
+
+          <div class="tile tile--agent">
+            <div class="pill-row">
+              <span class="pill pill--role">Hygiene</span>
+            </div>
+            <div class="tile-title">Janitor</div>
+            <div class="tile-subtitle">Artifact cleanup</div>
+            <div class="tile-body">
+              Periodically cleans up old cron artifacts according to retention policy (60d alerts, 90d daily outputs),
+              keeping disk usage under control without impacting dashboards or investigations.
+            </div>
+          </div>
+
+          <div class="tile" style="opacity:0; pointer-events:none;"></div>
+        </div>
+      </section>
+
+      <!-- LAYER 3: MCP Servers -->
+      <section class="layer">
+        <div class="layer-header">
+          <div class="layer-badge">Layer 3</div>
+          <div class="layer-title">MCP Servers (Tooling Backplane)</div>
+        </div>
+        <div class="layer-desc">
+          Deterministic backends that the agents call for facts: alert streams, hunting capabilities, and threat enrichment.
+          They don’t make decisions; they surface data and actions the agents reason about.
+        </div>
+
+        <div class="grid mcps">
+          <div class="tile tile--mcp">
+            <div class="pill-row">
+              <span class="pill pill--system">SentinelOne</span>
+            </div>
+            <div class="tile-title">SentinelOne Purple MCP</div>
+            <div class="tile-subtitle">Alerts · PowerQuery · Purple AI</div>
+            <div class="tile-body">
+              Exposes SentinelOne data and hunt capabilities as tools:
+              <strong>list_alerts</strong>, <strong>get_alert</strong>, <strong>powerquery</strong>, <strong>purple_ai</strong>, and more.
+              Security Analyst and the hunters lean on this to see what endpoints are actually doing.
+            </div>
+          </div>
+
+          <div class="tile tile--mcp">
+            <div class="pill-row">
+              <span class="pill pill--system">Threat Intel</span>
+            </div>
+            <div class="tile-title">TI Aggregator MCP</div>
+            <div class="tile-subtitle">Enrichment &amp; IOC curation</div>
+            <div class="tile-body">
+              Normalizes and enriches external IOCs from multiple feeds. Provides tools like
+              <strong>enrich_indicator</strong>, <strong>bulk_enrich</strong>, <strong>cve_report</strong>, and feed snapshot helpers
+              that TI Digest, Vulnerability Manager, and Proactive Hunter build on.
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- LAYER 4: External Data Feeds -->
+      <section class="layer">
+        <div class="layer-header">
+          <div class="layer-badge">Layer 4</div>
+          <div class="layer-title">External Data Feeds</div>
+        </div>
+        <div class="layer-desc">
+          The raw material that flows into the MCPs and agents: production telemetry from your environment and curated intelligence
+          from outside. The rest of the stack exists to turn this into decisions and actions.
+        </div>
+
+        <div class="grid feeds">
+          <div class="tile tile--feed">
+            <div class="pill-row">
+              <span class="pill pill--system">EDR / XDR</span>
+            </div>
+            <div class="tile-title">SentinelOne Platform</div>
+            <div class="tile-subtitle">Endpoint &amp; cloud telemetry</div>
+            <div class="tile-body">
+              Provides alerts, incident timelines, and huntable telemetry via SentinelOne Purple. This is where ransomware heuristics,
+              lateral movement, and identity abuse detections originate.
+            </div>
+          </div>
+
+          <div class="tile tile--feed">
+            <div class="pill-row">
+              <span class="pill pill--system">Threat Feeds</span>
+            </div>
+            <div class="tile-title">Multi-source TI</div>
+            <div class="tile-subtitle">KEV, OTX, GreyNoise, VT, abuse.ch, URLhaus</div>
+            <div class="tile-body">
+              External indicators and vulnerability intelligence that TI Aggregator pulls together. TI Digest and hunters use this
+              to understand which campaigns, CVEs, and IOCs matter most here.
+            </div>
+          </div>
+
+          <div class="tile tile--feed">
+            <div class="pill-row">
+              <span class="pill pill--system">Skill Security</span>
+            </div>
+            <div class="tile-title">ClawSec Advisory Feed</div>
+            <div class="tile-subtitle">Advisories for OpenClaw skills</div>
+            <div class="tile-body">
+              Security advisories for OpenClaw skills and integrations. Used to flag malicious or vulnerable skills and
+              drive guarded install/remove flows so the platform itself stays trustworthy.
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+</body>
+</html>

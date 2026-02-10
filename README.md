@@ -20,11 +20,18 @@ A local-only SecOps lab built for **autonomous security operations**:
   - Everything writes to `artifacts/cron/<agent>/<run>/...`
   - Dashboard reads those artifacts (no dependence on chat delivery)
 
-## Quick start
+## Quick start (OpenClaw)
 
-### Option A: one-shot bootstrap (agent-friendly)
+If you’re running this inside OpenClaw and want your agent to stand up the lab on a new host, start with:
 
-If you have an OpenClaw agent (or you’re at a shell) on the target host, you can let it do most of the work:
+- `docs/setup-openclaw.md` — end-to-end clone + deploy steps for OpenClaw
+- `docs/required-skills.md` — required OpenClaw skills (ClawSec) and MCP expectations
+
+The older bootstrap script flow is kept here for reference, but the documented OpenClaw path above is the **source of truth** going forward.
+
+### Option A: one-shot bootstrap (legacy / host-centric)
+
+If you’re on a generic host and want to bootstrap without OpenClaw-specific steps, you can still use the legacy script:
 
 ```bash
 bash -c "curl -sSf https://raw.githubusercontent.com/lascalasecurity/Jarvis-secops/main/scripts/bootstrap.sh -o /tmp/secops-bootstrap.sh && chmod +x /tmp/secops-bootstrap.sh && /tmp/secops-bootstrap.sh"

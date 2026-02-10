@@ -1,0 +1,130 @@
+{
+  "jobs": [
+    {
+      "name": "security-lab:security-analyst:30m",
+      "sessionTarget": "isolated",
+      "enabled": true,
+      "schedule": { "kind": "cron", "expr": "*/30 * * * *", "tz": "America/Los_Angeles" },
+      "payload": {
+        "kind": "agentTurn",
+        "model": "openai/gpt-5.2",
+        "thinking": "low",
+        "timeoutSeconds": 300,
+        "messageFile": "config/cron/security-analyst-30m.prompt.txt"
+      },
+      "delivery": { "mode": "announce", "channel": "last", "bestEffort": true }
+    },
+    {
+      "name": "security-lab:janitor:artifact-cleanup-daily-0300",
+      "sessionTarget": "isolated",
+      "enabled": true,
+      "schedule": { "kind": "cron", "expr": "0 3 * * *", "tz": "America/Los_Angeles" },
+      "payload": {
+        "kind": "agentTurn",
+        "model": "openai/gpt-5.2",
+        "thinking": "low",
+        "timeoutSeconds": 120,
+        "messageFile": "config/cron/janitor-artifact-cleanup-0300.prompt.txt"
+      },
+      "delivery": { "mode": "announce", "channel": "last", "bestEffort": true }
+    },
+    {
+      "name": "security-lab:ti-digest:daily-0500",
+      "sessionTarget": "isolated",
+      "enabled": true,
+      "schedule": { "kind": "cron", "expr": "0 5 * * *", "tz": "America/Los_Angeles" },
+      "payload": {
+        "kind": "agentTurn",
+        "model": "openai/gpt-5.2",
+        "thinking": "low",
+        "timeoutSeconds": 420,
+        "messageFile": "config/cron/ti-analyst-daily-0500.prompt.txt"
+      },
+      "delivery": { "mode": "announce", "channel": "last", "bestEffort": true }
+    },
+    {
+      "name": "security-lab:vuln-manager:daily-0700",
+      "sessionTarget": "isolated",
+      "enabled": true,
+      "schedule": { "kind": "cron", "expr": "0 7 * * *", "tz": "America/Los_Angeles" },
+      "payload": {
+        "kind": "agentTurn",
+        "model": "openai/gpt-5.2",
+        "thinking": "low",
+        "timeoutSeconds": 420,
+        "messageFile": "config/cron/vuln-manager-daily-0700.prompt.txt"
+      },
+      "delivery": { "mode": "announce", "channel": "last", "bestEffort": true }
+    },
+    {
+      "name": "security-lab:threat-hunter:weekly-mon-0800",
+      "sessionTarget": "isolated",
+      "enabled": true,
+      "schedule": { "kind": "cron", "expr": "0 7 * * *", "tz": "America/Los_Angeles" },
+      "payload": {
+        "kind": "agentTurn",
+        "model": "openai/gpt-5.2",
+        "thinking": "low",
+        "timeoutSeconds": 900,
+        "messageFile": "config/cron/threat-hunter-weekly-0800.prompt.txt"
+      },
+      "delivery": { "mode": "announce" }
+    },
+    {
+      "name": "security-lab:proactive-threat-hunter:collector-daily-0505",
+      "sessionTarget": "isolated",
+      "enabled": true,
+      "schedule": { "kind": "cron", "expr": "5 5 * * *", "tz": "America/Los_Angeles" },
+      "payload": {
+        "kind": "agentTurn",
+        "model": "openai/gpt-5.2",
+        "thinking": "low",
+        "timeoutSeconds": 240,
+        "messageFile": "config/cron/proactive-hunter-collector-daily-0505.prompt.txt"
+      },
+      "delivery": { "mode": "announce", "channel": "last", "bestEffort": true }
+    },
+    {
+      "name": "security-lab:proactive-threat-hunter:weekly-mon-0800",
+      "sessionTarget": "isolated",
+      "enabled": true,
+      "schedule": { "kind": "cron", "expr": "15 7 * * *", "tz": "America/Los_Angeles" },
+      "payload": {
+        "kind": "agentTurn",
+        "model": "openai/gpt-5.2",
+        "thinking": "low",
+        "timeoutSeconds": 900,
+        "messageFile": "config/cron/proactive-hunter-weekly-0800.prompt.txt"
+      },
+      "delivery": { "mode": "announce" }
+    },
+    {
+      "name": "security-lab:soc-manager:daily-0830",
+      "sessionTarget": "isolated",
+      "enabled": true,
+      "schedule": { "kind": "cron", "expr": "30 7 * * *", "tz": "America/Los_Angeles" },
+      "payload": {
+        "kind": "agentTurn",
+        "model": "openai/gpt-5.2",
+        "thinking": "low",
+        "timeoutSeconds": 600,
+        "messageFile": "config/cron/soc-manager-daily-0830.prompt.txt"
+      },
+      "delivery": { "mode": "announce" }
+    },
+    {
+      "name": "security-lab:soc-manager:weekly-overview",
+      "sessionTarget": "isolated",
+      "enabled": true,
+      "schedule": { "kind": "cron", "expr": "0 8 * * 1", "tz": "America/Los_Angeles" },
+      "payload": {
+        "kind": "agentTurn",
+        "model": "openai/gpt-5.2",
+        "thinking": "low",
+        "timeoutSeconds": 900,
+        "messageFile": "config/cron/soc-manager-weekly-overview.prompt.txt"
+      },
+      "delivery": { "mode": "announce" }
+    }
+  ]
+}

@@ -44,10 +44,7 @@ async function main() {
   const mode = process.argv.includes('--mode') ? process.argv[process.argv.indexOf('--mode') + 1] : 'collect';
   const started = new Date();
 
-  if (inQuietHours(started)) {
-    process.stdout.write('NO_REPLY');
-    return;
-  }
+  const quiet = inQuietHours(started);
 
   const { stamp } = nowParts();
   const outDir = path.join(CWD, 'artifacts', 'cron', 'security-analyst', stamp);
@@ -68,7 +65,13 @@ async function main() {
   if (mode === 'collect') {
     // In collect mode we stop after fetching and normalizing alerts.
     // Reasoning agents will read alerts.json and perform triage/analysis themselves.
-    process.stdout.write(`Collected alerts to ${path.relative(CWD, outDir)}/alerts.json\n`);
+    process.stdout.write(quiet ? 'NO_REPLY' : `Collected alerts to ${path.relative(CWD, outDir)}/alerts.json\n`);
+    return;
+  }
+
+  // Quiet hours: collect-only (no enrichment/chat) to keep the dashboard fresh without paging.
+  if (quiet) {
+    process.stdout.write('NO_REPLY');
     return;
   }
 
