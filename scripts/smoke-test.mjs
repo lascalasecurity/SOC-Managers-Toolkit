@@ -96,9 +96,10 @@ async function main() {
   // 3) mcporter list-tools (lightweight MCP connectivity check)
   if (exists('config/mcporter.json')) {
     try {
-      const { stdout } = await execP('npx -y mcporter list --config config/mcporter.json', {
+      const cmd = 'bash -lc "cd \"$SECURITY_LAB_CWD\" && set -a && source mcp/.env.local 2>/dev/null || true && set +a && npx -y mcporter list --config config/mcporter.json"';
+      const { stdout } = await execP(cmd, {
         cwd: CWD,
-        env: process.env,
+        env: { ...process.env, SECURITY_LAB_CWD: CWD },
         maxBuffer: 5 * 1024 * 1024
       });
       if (stdout.includes('purple-mcp') && stdout.includes('ti-aggregator')) {
@@ -114,12 +115,13 @@ async function main() {
   // 4) Security Analyst runner smoke test (collect mode)
   if (exists('agents/security-analyst/runner.js')) {
     try {
-      await execP('node agents/security-analyst/runner.js --mode collect', {
+      const cmd = 'bash -lc "cd \"$SECURITY_LAB_CWD\" && set -a && source mcp/.env.local 2>/dev/null || true && set +a && node agents/security-analyst/runner.js --mode collect"';
+      await execP(cmd, {
         cwd: CWD,
-        env: process.env,
+        env: { ...process.env, SECURITY_LAB_CWD: CWD },
         maxBuffer: 5 * 1024 * 1024
       });
-      log(true, 'Security Analyst runner (--mode collect) executed without immediate error');
+      log(true, 'Security Analyst runner (--mode collect) executed without immediate error (with mcp/.env.local loaded if present)');
     } catch (e) {
       warn(`Security Analyst runner (--mode collect) exited with error: ${e.message || e}`);
     }
