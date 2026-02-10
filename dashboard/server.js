@@ -396,6 +396,9 @@ async function getOverview() {
 
   const tiles = [];
   for (const a of agents) {
+    // Skip background/maintenance agents such as the Janitor; they should not appear as tiles.
+    if (a === 'janitor') continue;
+
     const latest = await getLatestRun(a);
     tiles.push({
       agent: a,
@@ -465,8 +468,15 @@ app.get('/api/agent/:agent/runs', async (req, res) => {
     const agent = req.params.agent;
     const agentDir = path.join(ARTIFACTS_ROOT, agent);
     const runs = await listDirs(agentDir);
+    // Sort newest first and only expose the last 15 runs to the UI to keep things manageable.
     runs.sort().reverse();
-    res.json({ ok: true, agent, agentName: guessAgentDisplayName(agent), runs: runs.map((r) => ({ run: r, ts: guessRunTimestamp(r), path: path.join(agent, r) })) });
+    const limited = runs.slice(0, 15);
+    res.json({
+      ok: true,
+      agent,
+      agentName: guessAgentDisplayName(agent),
+      runs: limited.map((r) => ({ run: r, ts: guessRunTimestamp(r), path: path.join(agent, r) }))
+    });
   } catch (e) {
     res.status(500).json({ ok: false, error: String(e?.message || e) });
   }

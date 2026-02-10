@@ -89,9 +89,9 @@ function formatStamp(stamp) {
   const m = s.match(/^(\d{4})(\d{2})(\d{2})(?:-(\d{2})(\d{2}))?$/);
   if (!m) return s;
   const [, y, mo, d, hh, mi] = m;
-  const yy = y.slice(2);
-  if (hh && mi) return `${mo}/${d}/${yy} ${hh}:${mi}:00`;
-  return `${mo}/${d}/${yy}`;
+  // Display as MM/DD/YYYY HH:MM (no seconds) for clarity in the UI
+  if (hh && mi) return `${mo}/${d}/${y} ${hh}:${mi}`;
+  return `${mo}/${d}/${y}`;
 }
 
 function renderTiles(overview) {
