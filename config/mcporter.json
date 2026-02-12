@@ -18,9 +18,9 @@
     },
     "ti-aggregator": {
       "transport": "stdio",
-      "command": "node",
+      "command": "bash",
       "args": [
-        "mcp/ti-aggregator/server.js"
+        "../mcp/ti-aggregator/launch.sh"
       ],
       "env": {
         "VIRUSTOTAL_API_KEY": "${VIRUSTOTAL_API_KEY}",

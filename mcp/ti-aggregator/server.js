@@ -188,6 +188,40 @@ async function fetchAbuseCH(indicator, type) {
   return { score: null, evidence: [], raw: null };
 }
 
+async function fetchAbuseIPDB(indicator, type) {
+  // AbuseIPDB is IP-reputation focused; we treat it as an IP-only enrichment source.
+  if (type !== 'ip') return { score: null, evidence: [], raw: null };
+
+  const key = env.ABUSEIPDB_API_KEY;
+  if (!key) return { score: null, evidence: [], raw: null, error: 'ABUSEIPDB_API_KEY missing' };
+
+  const url = 'https://api.abuseipdb.com/api/v2/check';
+  const params = new URLSearchParams({ ipAddress: indicator, maxAgeInDays: '90' });
+
+  const res = await fetch(url, {
+    method: 'GET',
+    headers: {
+      Key: key,
+      Accept: 'application/json'
+    },
+    body: undefined, // GET with query params only
+  }).catch((e) => ({ ok: false, status: 0, _err: e }));
+
+  if (!res.ok) return { score: null, evidence: [], raw: null, error: `AbuseIPDB ${res.status}` };
+  const data = await res.json();
+
+  const attr = data?.data || {};
+  const score = typeof attr.abuseConfidenceScore === 'number' ? Math.min(100, attr.abuseConfidenceScore) : null;
+  const reports = typeof attr.totalReports === 'number' ? attr.totalReports : null;
+
+  const evidence = [];
+  if (score != null) evidence.push({ source: 'abuseipdb', kind: 'confidence', value: score });
+  if (reports != null) evidence.push({ source: 'abuseipdb', kind: 'reports', value: reports });
+  if (attr.lastReportedAt) evidence.push({ source: 'abuseipdb', kind: 'last_reported_at', value: attr.lastReportedAt });
+
+  return { score, evidence, raw: data };
+}
+
 async function fetchVirusTotal(indicator, type) {
   const key = env.VIRUSTOTAL_API_KEY;
   if (!key) return { score: null, evidence: [], raw: null, error: 'VIRUSTOTAL_API_KEY missing' };
@@ -228,7 +262,7 @@ async function fetchVirusTotal(indicator, type) {
   return { score, evidence, raw: data };
 }
 
-async function enrichIndicator({ indicator, type = 'auto', sources = ['otx', 'greynoise', 'kev', 'abusech', 'virustotal'] }) {
+async function enrichIndicator({ indicator, type = 'auto', sources = ['otx', 'greynoise', 'kev', 'abusech', 'abuseipdb', 'virustotal'] }) {
   if (!indicator || typeof indicator !== 'string') throw new Error('indicator must be a non-empty string');
   const t = type === 'auto' ? guessType(indicator) : type;
   const enabled = new Set(sources);
@@ -289,6 +323,19 @@ async function enrichIndicator({ indicator, type = 'auto', sources = ['otx', 'gr
     await sleep(100);
   }
 
+  if (enabled.has('abuseipdb')) {
+    try {
+      const r = await fetchAbuseIPDB(indicator, t);
+      if (r.score != null) scores.abuseipdb = r.score;
+      evidence.push(...(r.evidence || []));
+      raw.abuseipdb = r.raw;
+      if (r.error) errors.abuseipdb = r.error;
+    } catch (e) {
+      errors.abuseipdb = String(e);
+    }
+    await sleep(100);
+  }
+
   if (enabled.has('virustotal')) {
     try {
       const r = await fetchVirusTotal(indicator, t);
@@ -313,6 +360,7 @@ async function enrichIndicator({ indicator, type = 'auto', sources = ['otx', 'gr
       greynoise: !!raw.greynoise,
       kev: !!raw.kev,
       abusech: !!raw.abusech,
+      abuseipdb: !!raw.abuseipdb,
       virustotal: !!raw.virustotal
     },
     errors: Object.keys(errors).length ? errors : undefined,
@@ -323,7 +371,7 @@ async function enrichIndicator({ indicator, type = 'auto', sources = ['otx', 'gr
   return out;
 }
 
-async function bulkEnrich({ indicators, type = 'auto', sources = ['otx', 'greynoise', 'kev', 'abusech', 'virustotal'], concurrency = 4 }) {
+async function bulkEnrich({ indicators, type = 'auto', sources = ['otx', 'greynoise', 'kev', 'abusech', 'abuseipdb', 'virustotal'], concurrency = 4 }) {
   let list = indicators;
   if (typeof list === 'string') {
     const s = list.trim();

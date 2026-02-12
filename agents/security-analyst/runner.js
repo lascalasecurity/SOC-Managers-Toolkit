@@ -175,6 +175,23 @@ async function main() {
         md += `  IOCs: ${item.iocs.map((x) => `${x.type}:${x.indicator}`).join(', ')}\n`;
         const bad = item.ti.filter((t) => t.verdict === 'malicious' || t.verdict === 'suspicious');
         if (bad.length) md += `  TI flags: ${bad.map((t) => `${t.type}:${t.indicator}=${t.verdict}`).join(', ')}\n`;
+
+        // AbuseIPDB-specific context for IPs, when present
+        const abuseLines = [];
+        for (const t of item.ti) {
+          if (t.type !== 'ip' || !t.scores) continue;
+          const score = typeof t.scores.abuseipdb === 'number' ? t.scores.abuseipdb : null;
+          if (score == null || score <= 0) continue;
+          const repEvidence = (t.evidence || []).filter((e) => e.source === 'abuseipdb');
+          const reports = repEvidence.find((e) => e.kind === 'reports')?.value;
+          const lastRep = repEvidence.find((e) => e.kind === 'last_reported_at')?.value;
+          abuseLines.push(`    - ${t.indicator}: AbuseIPDB confidence ${score}` +
+            (typeof reports === 'number' ? ` (${reports} reports)` : '') +
+            (lastRep ? `, last reported ${lastRep}` : ''));
+        }
+        if (abuseLines.length) {
+          md += '  AbuseIPDB:\n' + abuseLines.join('\n') + '\n';
+        }
       }
       md += `  Next: review alert notes; ask Purple AI for PQ to validate + scope on this host; run PQ for last 24h.\n`;
     }

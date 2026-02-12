@@ -18,4 +18,163 @@ You can use Purple MCP tools:
 - `purple-mcp.powerquery` — execute PowerQuery/Kusto-style hunts against the data lake.
 
 ## Goal (each run)
-[Full run instructions as in current cron payload...]
+
+Treat this as a **weekly TI-driven hunt run**:
+- Take the latest TI IOCs (via TI Digest + Proactive Hunter collector).
+- Design a **small number of high-value hunts** in Purple.
+- Execute them.
+- Write deterministic artifacts that other agents (and the dashboard) can rely on.
+
+## Steps
+
+1. **Determine date / paths (and run collector if needed)**
+   - Use the latest `YYYYMMDD` directory under `artifacts/cron/proactive-hunter/` (that is, the most recent collector run for this job).
+   - If there is **no** directory for today’s `YYYYMMDD`, or it exists but **`ti_iocs.selected.json` is missing**, then first run the collector inline:
+     - `cd "$SECURITY_LAB_CWD" && set -a && source mcp/.env.local && set +a && node agents/proactive-threat-hunter/runner.js`
+     - After it completes, re-check today's `artifacts/cron/proactive-hunter/<YYYYMMDD>/` directory.
+   - Let:
+     - `HUNTER_DIR = artifacts/cron/proactive-hunter/<YYYYMMDD>/`
+     - `SELECTED_PATH = HUNTER_DIR/ti_iocs.selected.json`
+     - `HUNTS_PATH = HUNTER_DIR/hunts.json`
+     - `PQ_PATH = HUNTER_DIR/powerqueries.json`
+     - `RESULTS_PATH = HUNTER_DIR/results.json`
+     - `REPORT_PATH = HUNTER_DIR/report.md`
+
+2. **Load TI selection + context**
+   - Read `ti_iocs.selected.json`.
+   - Extract:
+     - `tiFeedPath`, `tiFeedCount`
+     - `selected[]` IOCs (indicators + types + context)
+     - `enriched` batch (scores/evidence per IOC)
+
+3. **Group and prioritize hunts**
+   - Group IOCs into a small number of **hunt groups** (e.g., “KEV Windows/Office CVEs”, “C2-ish domains”, etc.).
+   - For each group, define:
+     - A short **group name**
+     - Which IOCs it includes
+     - 1–2 **hypotheses** (what we expect to see if exploitation or abuse is present)
+     - 3–5 **hunts** (each hunt corresponds to one or more PowerQuery runs)
+
+4. **Use Purple AI / PowerQuery helpers as needed**
+   - When helpful, call `purple-mcp.purple_ai` to refine what to look for (tables, filters, parent/child process logic).
+   - For actual execution, use `purple-mcp.powerquery` with:
+     - A clearly bounded **time window** (e.g., 7 days, or smaller slices when timeouts occur).
+     - Queries that are specific to the behaviors you are hunting for, not just generic telemetry.
+
+5. **Execute hunts and record results**
+   - For each hunt:
+     - Run one or more PowerQuery queries.
+     - For each query, capture at least:
+       - `id` (stable identifier you choose)
+       - `start` and `end` timestamps used
+       - The **query string**
+       - `status` (`ok` / `timeout` / `error`)
+       - `matchCount` (if available)
+       - A small `sampleRows` array when `matchCount > 0` or for sanity checks.
+   - Summarize per-hunt results into a **hunts JSON document** with this general structure:
+
+     ```jsonc
+     {
+       "tiFeedPath": "artifacts/cron/ti-digest/2026XXXX/ti_iocs.json",
+       "tiFeedCount": 6,
+       "selectedIocs": ["CVE-2026-21513", "CVE-2026-21510", ...],
+       "iocGroups": [
+         {
+           "name": "KEV Windows/Office RCE & Priv-Esc CVEs (...)",
+           "iocs": ["CVE-2026-21513", ...],
+           "hypotheses": ["...", "..."],
+           "hunts": [
+             {
+               "id": "hunt_lolbin_network_suspicious_mshta_regsvr32_rundll32",
+               "description": "...",
+               "tools": ["purple-mcp.powerquery"],
+               "timeWindow": {"start": "...", "end": "..."},
+               "queries": ["PowerQuery text..."],
+               "result": {
+                 "status": "completed" | "partial_timeout" | "timeout" | "error",
+                 "signal": "no_evidence" | "no_evidence_in_sample" | "suspicious" | "positive_hit",
+                 "evidence": "short human-readable summary",
+                 "assets": ["HOST1", "HOST2"],
+                 "notes": "longer notes if needed"
+               }
+             }
+           ]
+         }
+       ],
+       "overallAssessment": {
+         "summary": "plain-language weekly conclusion",
+         "signal": "no_evidence" | "suspicious" | "positive_hit",
+         "confidence": "low" | "medium" | "high",
+         "constraints": ["any important caveats, like timeouts"]
+       }
+     }
+     ```
+
+   - Write that JSON to `HUNTS_PATH`.
+   - Write the per-query execution details to `PQ_PATH` as an array of:
+
+     ```jsonc
+     [
+       {
+         "id": "baseline_dns",
+         "start": "...",
+         "end": "...",
+         "query": "PowerQuery text...",
+         "status": "ok" | "timeout" | "error",
+         "matchCount": 0,
+         "sampleRows": [ { ... } ]
+       },
+       ...
+     ]
+     ```
+
+6. **Phase 3: Write a deterministic `results.json` summary**
+
+   - After writing `hunts.json` and `powerqueries.json`, compute a **small summary object** and write it to `RESULTS_PATH`.
+   - The summary should include at least:
+
+     ```jsonc
+     {
+       "tiFeedPath": "...",
+       "selectedCount": <number of selected IOCs>,
+       "huntCount": <total hunts>,
+       "completed": <hunts with result.status = "completed">,
+       "partialTimeout": <hunts with result.status = "partial_timeout">,
+       "timeouts": <hunts with result.status = "timeout">,
+       "errors": <hunts with result.status = "error">,
+       "positiveHits": <hunts with result.signal = "positive_hit">,
+       "suspiciousSignals": <hunts with result.signal = "suspicious">,
+       "overallSignal": "no_evidence" | "suspicious" | "positive_hit",
+       "overallConfidence": "low" | "medium" | "high"
+     }
+     ```
+
+   - `overallSignal` and `overallConfidence` should mirror the `overallAssessment` from `hunts.json`.
+
+7. **Update `report.md` for dashboard visibility**
+
+   - Read the existing `report.md` in `HUNTER_DIR` (from the collector phase).
+   - Append a new section at the end summarizing **execution, not just selection**, e.g.:
+
+     ```markdown
+     ---
+     ## Hunt execution summary
+
+     - Hunts executed: 4 total (3 completed, 1 partial timeout, 0 full timeouts)
+     - Signals: 0 positive hits, 0 suspicious, all hunts returned **no evidence** in the sampled windows.
+     - Artifacts:
+       - Hunts definition/results: `artifacts/cron/proactive-hunter/<YYYYMMDD>/hunts.json`
+       - PowerQuery runs: `artifacts/cron/proactive-hunter/<YYYYMMDD>/powerqueries.json`
+       - Summary: `artifacts/cron/proactive-hunter/<YYYYMMDD>/results.json`
+     ```
+
+   - Keep the language concise but clear enough that a human reading the dashboard immediately understands whether anything was found.
+
+8. **Final output (to stdout)**
+
+   - Print a brief text summary, for example:
+
+     - How many IOCs were selected.
+     - How many hunts were executed.
+     - Any **positive or suspicious hits** (if present), or a clear statement that **no evidence** was found in the sampled windows.
+   - Do **not** print the full JSON artifacts; they live on disk as described above.
