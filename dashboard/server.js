@@ -184,7 +184,12 @@ async function computeWeeklyStats(agent, agentDir, dirs, days = 7) {
 
 async function getLatestRun(agent) {
   const agentDir = path.join(ARTIFACTS_ROOT, agent);
-  const dirs = await listDirs(agentDir);
+  let dirs = await listDirs(agentDir);
+  if (!dirs.length) return null;
+
+  // Only consider directories that look like run stamps.
+  // This prevents stray folders like "test" from showing up as the "latest run".
+  dirs = dirs.filter((d) => guessRunTimestamp(d));
   if (!dirs.length) return null;
 
   // Sort lexicographically descending works for YYYYMMDD(-HHMM) stamps.
