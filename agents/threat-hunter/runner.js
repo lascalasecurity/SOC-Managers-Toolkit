@@ -24,29 +24,21 @@ async function main() {
   // last 7 days (168h) by default
   const range = await getTimestampRange({ cwd: CWD, hours: 24 * 7 });
 
-  // get_timestamp_range may return either:
-  // - { start_timestamp, end_timestamp } (ms)
-  // - { offset_time, current_time } (ISO strings)
-  const startMs =
-    typeof range?.start_timestamp === 'number' ? range.start_timestamp :
-    range?.offset_time ? new Date(range.offset_time).getTime() :
-    Date.now() - 24 * 7 * 60 * 60 * 1000;
-
-  const endMs =
-    typeof range?.end_timestamp === 'number' ? range.end_timestamp :
-    range?.current_time ? new Date(range.current_time).getTime() :
-    Date.now();
+  // getTimestampRange() returns { startMs, endMs, startIso, endIso, raw }
+  // Prefer Purple-derived bounds; fall back to local time if Purple returns nothing usable.
+  const startMs = typeof range?.startMs === 'number' ? range.startMs : (Date.now() - 24 * 7 * 60 * 60 * 1000);
+  const endMs = typeof range?.endMs === 'number' ? range.endMs : Date.now();
 
   const window = {
-    ...range,
-    start_timestamp: startMs,
-    end_timestamp: endMs,
-    start_time: new Date(startMs).toISOString(),
-    end_time: new Date(endMs).toISOString()
+    raw: range?.raw ?? range,
+    startMs,
+    endMs,
+    startIso: range?.startIso ?? new Date(startMs).toISOString(),
+    endIso: range?.endIso ?? new Date(endMs).toISOString()
   };
 
   // Snapshot alerts via list_alerts and client-side filter on created/detected time
-  const list = await listAlerts({ cwd: CWD, first: 100 });
+  const list = await listAlerts({ cwd: CWD });
   const edges = list?.edges ?? [];
   const allAlerts = edges.map((e) => e.node).filter(Boolean);
   const alerts = allAlerts.filter((a) => {
@@ -94,7 +86,7 @@ async function main() {
   // Ask Purple AI to perform the hunt itself over the last 7 days and report evidence
   const huntPrompt = [
     `You are a threat hunter working inside SentinelOne Purple.`,
-    `Time window (UTC): ${window.start_time} → ${window.end_time}.`,
+    `Time window (UTC): ${window.startIso} → ${window.endIso}.`,
     `Alerts searched in this window: ${alerts.length} (sampled ${sampled.length} for IOC extraction).`,
     '',
     `Here is a condensed IOC list extracted from these alerts (type:indicator):`,

@@ -43,7 +43,8 @@ async function main() {
   const list = await mcporterCall({
     cwd: CWD,
     tool: 'purple-mcp.list_vulnerabilities',
-    args: { first: 100 },
+    // NOTE: Purple MCP may reject pagination args like `first`; rely on server default.
+    args: {},
     output: 'json',
     timeoutMs: 120000
   });
