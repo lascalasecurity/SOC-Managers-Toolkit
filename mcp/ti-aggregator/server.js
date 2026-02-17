@@ -91,9 +91,10 @@ async function fetchOTX(indicator, type) {
   }
 
   const res = await fetch(url, { headers: { 'X-OTX-API-KEY': key } });
-  // OTX returns 400 for many "invalid" indicators (e.g., synthetic TLDs). Treat as no-data instead of a hard error.
+  // OTX returns 400 for many invalid/unsupported indicators (e.g., synthetic TLDs).
+  // Treat as no-data, but preserve a lightweight signal that the input was rejected.
   if (!res.ok) {
-    if (res.status === 400) return { score: 0, evidence: [], raw: null };
+    if (res.status === 400) return { score: 0, evidence: [], raw: null, error: 'invalid_indicator' };
     return { score: null, evidence: [], raw: null, error: `OTX ${res.status}` };
   }
   const data = await res.json();
@@ -261,9 +262,10 @@ async function fetchVirusTotal(indicator, type) {
   }
 
   const res = await fetch(url, { headers });
-  // VirusTotal returns 400 for some unsupported/invalid indicators. Treat as no-data instead of a hard error.
+  // VirusTotal returns 400 for some unsupported/invalid indicators.
+  // Treat as no-data, but preserve a lightweight signal that the input was rejected.
   if (!res.ok) {
-    if (res.status === 400) return { score: 0, evidence: [], raw: null };
+    if (res.status === 400) return { score: 0, evidence: [], raw: null, error: 'invalid_indicator' };
     return { score: null, evidence: [], raw: null, error: `VT ${res.status}` };
   }
   const data = await res.json();
