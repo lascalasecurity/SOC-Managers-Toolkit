@@ -91,7 +91,11 @@ async function fetchOTX(indicator, type) {
   }
 
   const res = await fetch(url, { headers: { 'X-OTX-API-KEY': key } });
-  if (!res.ok) return { score: null, evidence: [], raw: null, error: `OTX ${res.status}` };
+  // OTX returns 400 for many "invalid" indicators (e.g., synthetic TLDs). Treat as no-data instead of a hard error.
+  if (!res.ok) {
+    if (res.status === 400) return { score: 0, evidence: [], raw: null };
+    return { score: null, evidence: [], raw: null, error: `OTX ${res.status}` };
+  }
   const data = await res.json();
 
   const pulses = data?.pulse_info?.pulses || [];
@@ -159,7 +163,12 @@ async function fetchAbuseCH(indicator, type) {
       body: new URLSearchParams({ url: indicator })
     });
     if (!res.ok) return { score: null, evidence: [], raw: null, error: `abuse.ch ${res.status}` };
-    const data = await res.json();
+    const body = await res.text();
+    if (body.trim().toLowerCase() === 'no') {
+      return { score: 0, evidence: [], raw: { text: body } };
+    }
+    let data;
+    try { data = JSON.parse(body); } catch { return { score: 0, evidence: [], raw: { text: body }, error: 'abuse.ch non-JSON response' }; }
 
     const score = data.url_status === 'online' || data.url_status === 'offline' ? 70 : 0;
     const evidence = [];
@@ -175,7 +184,12 @@ async function fetchAbuseCH(indicator, type) {
       body: new URLSearchParams({ host: indicator })
     });
     if (!res.ok) return { score: null, evidence: [], raw: null, error: `abuse.ch ${res.status}` };
-    const data = await res.json();
+    const body = await res.text();
+    if (body.trim().toLowerCase() === 'no') {
+      return { score: 0, evidence: [], raw: { text: body } };
+    }
+    let data;
+    try { data = JSON.parse(body); } catch { return { score: 0, evidence: [], raw: { text: body }, error: 'abuse.ch non-JSON response' }; }
 
     const listed = Array.isArray(data.urls) && data.urls.length > 0;
     return {
@@ -247,7 +261,11 @@ async function fetchVirusTotal(indicator, type) {
   }
 
   const res = await fetch(url, { headers });
-  if (!res.ok) return { score: null, evidence: [], raw: null, error: `VT ${res.status}` };
+  // VirusTotal returns 400 for some unsupported/invalid indicators. Treat as no-data instead of a hard error.
+  if (!res.ok) {
+    if (res.status === 400) return { score: 0, evidence: [], raw: null };
+    return { score: null, evidence: [], raw: null, error: `VT ${res.status}` };
+  }
   const data = await res.json();
 
   const stats = data?.data?.attributes?.last_analysis_stats || {};

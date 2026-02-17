@@ -118,14 +118,15 @@ async function main() {
       notesJson = JSON.parse(notes.stdout);
     }
 
-    const fullText = [
+    // IOC extraction: prefer telemetry fields and suppress note/email artifacts.
+    // Notes frequently contain analyst emails which can be mis-extracted as "domains" (e.g., local-part tokens like aviv.baron).
+    const iocText = [
       a.name,
       a.description,
-      JSON.stringify(detailJson),
-      notesJson ? JSON.stringify(notesJson) : ''
+      JSON.stringify(detailJson)
     ].filter(Boolean).join('\n');
 
-    const iocs = extractIOCs(fullText).slice(0, 5);
+    const iocs = extractIOCs(iocText).slice(0, 5);
 
     const ti = [];
     for (const ioc of iocs) {
