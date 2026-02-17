@@ -14,6 +14,8 @@ This repo is intended to be **clone-and-run** for a local SecOps lab built aroun
 - OpenClaw installed and running on the same host (Gateway)
 - `uvx` available (used to launch `purple-mcp` via stdio)
 
+Recommended: run `npm run doctor` after cloning to validate prerequisites + connectivity.
+
 ## 1) Automated / agent-friendly bootstrap
 
 If you have an OpenClaw agent (or are comfortable running a shell script) on the target host, you can bootstrap the lab in one shot:
@@ -34,6 +36,8 @@ After the script finishes:
 - Edit `~/security-lab/mcp/.env.local` with your API keys/URLs.
 - Hit `http://127.0.0.1:18888` to confirm the dashboard.
 - If OpenClaw is installed, run `openclaw cron list` and confirm the `security-lab:*` jobs are present.
+
+Note: `docs/cron-jobs.json` is legacy; the current cron source-of-truth is `config/gateway-cron.json`.
 
 ---
 

@@ -1,4 +1,5 @@
 {
+  "_legacy_note": "LEGACY FILE. The source of truth is now config/gateway-cron.json (see docs/setup-openclaw.md). This file is kept only for historical reference.",
   "jobs": [
     {
       "name": "security-lab:security-analyst:30m",

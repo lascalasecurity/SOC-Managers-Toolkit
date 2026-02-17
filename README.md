@@ -26,6 +26,7 @@ If you’re running this inside OpenClaw and want your agent to stand up the lab
 
 - `docs/setup-openclaw.md` — end-to-end clone + deploy steps for OpenClaw
 - `docs/required-skills.md` — required OpenClaw skills (ClawSec) and MCP expectations
+- `npm run doctor` — validates a fresh host (prereqs + env + MCP connectivity)
 
 The older bootstrap script flow is kept here for reference, but the documented OpenClaw path above is the **source of truth** going forward.
 

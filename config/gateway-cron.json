@@ -60,7 +60,7 @@
       "name": "security-lab:threat-hunter:weekly-mon-0800",
       "sessionTarget": "isolated",
       "enabled": true,
-      "schedule": { "kind": "cron", "expr": "0 7 * * *", "tz": "America/Los_Angeles" },
+      "schedule": { "kind": "cron", "expr": "0 8 * * 1", "tz": "America/Los_Angeles" },
       "payload": {
         "kind": "agentTurn",
         "model": "openai/gpt-5.2",
@@ -88,7 +88,7 @@
       "name": "security-lab:proactive-threat-hunter:weekly-mon-0800",
       "sessionTarget": "isolated",
       "enabled": true,
-      "schedule": { "kind": "cron", "expr": "15 7 * * *", "tz": "America/Los_Angeles" },
+      "schedule": { "kind": "cron", "expr": "0 8 * * 1", "tz": "America/Los_Angeles" },
       "payload": {
         "kind": "agentTurn",
         "model": "openai/gpt-5.2",
@@ -102,7 +102,7 @@
       "name": "security-lab:soc-manager:daily-0830",
       "sessionTarget": "isolated",
       "enabled": true,
-      "schedule": { "kind": "cron", "expr": "30 7 * * *", "tz": "America/Los_Angeles" },
+      "schedule": { "kind": "cron", "expr": "30 8 * * *", "tz": "America/Los_Angeles" },
       "payload": {
         "kind": "agentTurn",
         "model": "openai/gpt-5.2",
@@ -116,7 +116,7 @@
       "name": "security-lab:soc-manager:weekly-overview",
       "sessionTarget": "isolated",
       "enabled": true,
-      "schedule": { "kind": "cron", "expr": "0 8 * * 1", "tz": "America/Los_Angeles" },
+      "schedule": { "kind": "cron", "expr": "0 9 * * 1", "tz": "America/Los_Angeles" },
       "payload": {
         "kind": "agentTurn",
         "model": "openai/gpt-5.2",

@@ -117,7 +117,7 @@ Under the hood, the agent should:
 
    ```bash
    cd ~/.openclaw/workspace/security-lab
-   node scripts/apply-cron-spec.mjs
+   node scripts/apply-cron-spec.mjs > /tmp/security-lab.gateway-cron.spec.json
    ```
 
 2. Read the resulting JSON and for each job:
@@ -138,6 +138,9 @@ Once applied, you should see jobs like:
 - `security-lab:soc-manager:weekly-overview`
 
 A future improvement is a dedicated automation script that calls the Gateway `cron` tool directly, but this is enough for an agent-driven deployment.
+
+Sanity check after cloning on a fresh host:
+- Run `npm run doctor` to validate prerequisites + MCP connectivity.
 
 ---
 

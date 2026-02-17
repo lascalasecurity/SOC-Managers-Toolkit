@@ -3,6 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "doctor": "node scripts/doctor.mjs",
+    "smoke-test": "node scripts/smoke-test.mjs",
     "security-analyst": "node agents/security-analyst/runner.js",
     "vuln-manager": "node agents/vuln-manager/runner.js",
     "ti-analyst": "node agents/ti-analyst/runner.js --mode collect",
