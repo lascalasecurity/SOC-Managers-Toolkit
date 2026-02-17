@@ -24,6 +24,27 @@ async function main() {
   // last 7 days (168h) by default
   const range = await getTimestampRange({ cwd: CWD, hours: 24 * 7 });
 
+  // get_timestamp_range may return either:
+  // - { start_timestamp, end_timestamp } (ms)
+  // - { offset_time, current_time } (ISO strings)
+  const startMs =
+    typeof range?.start_timestamp === 'number' ? range.start_timestamp :
+    range?.offset_time ? new Date(range.offset_time).getTime() :
+    Date.now() - 24 * 7 * 60 * 60 * 1000;
+
+  const endMs =
+    typeof range?.end_timestamp === 'number' ? range.end_timestamp :
+    range?.current_time ? new Date(range.current_time).getTime() :
+    Date.now();
+
+  const window = {
+    ...range,
+    start_timestamp: startMs,
+    end_timestamp: endMs,
+    start_time: new Date(startMs).toISOString(),
+    end_time: new Date(endMs).toISOString()
+  };
+
   // Snapshot alerts via list_alerts and client-side filter on created/detected time
   const list = await listAlerts({ cwd: CWD, first: 100 });
   const edges = list?.edges ?? [];
@@ -32,10 +53,10 @@ async function main() {
     const ts = a.detected_at || a.detectedAt || a.created_at || a.createdAt;
     if (!ts) return false;
     const t = new Date(ts).getTime();
-    return t >= range.start_timestamp && t <= range.end_timestamp;
+    return t >= startMs && t <= endMs;
   });
 
-  const snapshot = { window: range, alerts };
+  const snapshot = { window, alerts };
   writeJson(path.join(outDir, 'alerts.raw.json'), snapshot);
 
   if (mode === 'collect') {
@@ -70,15 +91,43 @@ async function main() {
   const enriched = iocs.length ? await bulkEnrich({ cwd: CWD, indicators: iocs.map((x) => x.indicator) }) : { count: 0, results: [] };
   writeJson(path.join(outDir, 'iocs.json'), { iocs, enriched });
 
-  // Ask Purple AI for hunt guidance (v0: one prompt)
-  const ai = await purpleAi({ cwd: CWD, query: `We saw ${iocs.length} IOCs from alerts this week. Suggest 3-5 PowerQuery hunts to check for follow-on compromise (last 7 days). Focus on ransomware/lateral movement and credential access.` });
+  // Ask Purple AI to perform the hunt itself over the last 7 days and report evidence
+  const huntPrompt = [
+    `You are a threat hunter working inside SentinelOne Purple.`,
+    `Time window (UTC): ${window.start_time} → ${window.end_time}.`,
+    `Alerts searched in this window: ${alerts.length} (sampled ${sampled.length} for IOC extraction).`,
+    '',
+    `Here is a condensed IOC list extracted from these alerts (type:indicator):`,
+    iocs.length ? iocs.map((x) => `- ${x.type}:${x.indicator}`).join('\n') : '- <none>',
+    '',
+    `Task: Using your own access to the environment and PowerQuery under the hood, hunt for any evidence related to these IOCs in this time window.`,
+    `You should run whatever queries you need yourself; DO NOT return queries for someone else to run. Instead, return a human-readable markdown report summarizing whether any of these IOCs appear in the environment.`,
+    '',
+    `Your markdown response MUST follow this structure:`,
+    `# Summary`,
+    `- Overall assessment (e.g., "no sightings", "limited sightings", "strong evidence of compromise")`,
+    `- Notable hosts / users / time ranges (if any)`,
+    '',
+    `# Findings by IOC`,
+    `For each IOC (even if not seen), list:`,
+    `- IOC: <type>:<indicator>`,
+    `- Sightings: none | brief description of where/when`,
+    `- Confidence: low/medium/high`,
+    '',
+    `# Gaps / Limitations`,
+    `- Any visibility gaps or errors you encountered while hunting`,
+    '',
+    `If you cannot access the necessary data or queries fail, say so explicitly under Gaps / Limitations.`
+  ].join('\n');
+
+  const ai = await purpleAi({ cwd: CWD, query: huntPrompt });
   writeJson(path.join(outDir, 'purple_ai.json'), ai);
 
   let md = '';
   md += `Threat Hunter — weekly — ${ymd} PT\n`;
   md += `Alerts searched (7d): ${alerts.length} (sampled ${sampled.length})\n`;
   md += `Extracted IOCs: ${iocs.length}\n\n`;
-  md += `Next hunts (from Purple AI):\n`;
+  md += `Purple AI hunt report (direct hunt over environment, no local PowerQuery execution):\n`;
   md += (ai.text ? ai.text : JSON.stringify(ai, null, 2)) + '\n\n';
   md += `Artifacts: ${path.relative(CWD, outDir)}/\n`;
 

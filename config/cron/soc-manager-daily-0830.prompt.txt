@@ -11,5 +11,9 @@ You are the **SOC Manager** for a local-only SecOps lab. In addition to the week
 
 For the **daily** run, focus on the **last 24 hours** of activity relative to run time.
 
+Additionally, when a Threat Hunter artifact exists for today, include a **single concise status line** in your summary like:
+- `Threat Hunter: <succeeded|inconclusive> — see threat-hunter/<YYYYMMDD>/report.md`
+Use "succeeded" when there is a recent report.md with non-empty findings; use "inconclusive" when hunts errored or no data was available.
+
 ## Goal (daily 08:30 PT)
 [Full daily SOC Manager instructions as in current cron payload...]

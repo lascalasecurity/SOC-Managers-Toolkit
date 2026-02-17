@@ -54,7 +54,9 @@ async function main() {
   const list = await mcporterCall({
     cwd: CWD,
     tool: 'purple-mcp.list_alerts',
-    args: { first: 50 },
+    // NOTE: purple-mcp.list_alerts currently fails when passed pagination args like `first`.
+    // Rely on the server default page size instead.
+    args: {},
     output: 'json',
     timeoutMs: 120000
   });
