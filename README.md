@@ -1,86 +1,110 @@
-# Jarvis SecOps Lab (security-lab)
+# SOC Manager’s Toolkit (security-lab)
 
-A local-only SecOps lab built for **autonomous security operations**:
+A **local-only** SecOps lab for *autonomous security operations*:
+
 - Reasoning-first agents (triage, TI, vuln mgmt, hunting, SOC Manager QA)
-- Deterministic helper collectors that write durable artifacts
-- A standalone interactive HTML dashboard that updates as new runs land
+- Deterministic collectors that write durable artifacts (JSON/MD)
+- A standalone dashboard that updates as new runs land
+
+> Design goal: **artifacts-first observability**. Chat delivery is “nice to have”; the source of truth is `artifacts/cron/...`.
+
+---
 
 ## What you get
 
-- **MCP stack (via MCPorter)**
-  - `purple-mcp` (SentinelOne Purple)
-  - `ti-aggregator` (local Node MCP for enrichment + feed snapshots)
-- **Agents (conceptual)**
-  - Security Analyst (30m)
-  - TI Digest (daily)
-  - Vulnerability Manager (daily)
-  - Threat Hunter + Proactive Threat Hunter (weekly)
-  - SOC Manager (weekly overview + QA)
-- **Artifacts-first workflow**
-  - Everything writes to `artifacts/cron/<agent>/<run>/...`
-  - Dashboard reads those artifacts (no dependence on chat delivery)
+### Agents (roles)
+- **Security Analyst** (every 30m): alert snapshot + triage
+- **TI Analyst (TI Digest)** (daily): curated TI + IOCs
+- **Vulnerability Manager** (daily): vuln posture snapshot + prioritized fixes
+- **Threat Hunter** (daily/weekly depending on your cron config): environment-driven hunts
+- **Proactive Threat Hunter** (daily/weekly depending on your cron config): TI-driven hunts
+- **SOC Manager** (daily + weekly): executive summary + cross-agent QA
+- **Janitor** (daily): artifact retention/cleanup
 
-## Quick start (OpenClaw)
+### Integrations (MCP via MCPorter)
+- `purple-mcp` — SentinelOne Purple
+- `ti-aggregator` — local Node MCP for enrichment + feed snapshots
 
-If you’re running this inside OpenClaw and want your agent to stand up the lab on a new host, start with:
+### Dashboard
+- Local web UI: `http://127.0.0.1:18888`
+- Reads from: `artifacts/cron/<agent>/<run>/...`
 
-- `docs/setup-openclaw.md` — end-to-end clone + deploy steps for OpenClaw
-- `docs/required-skills.md` — required OpenClaw skills (ClawSec) and MCP expectations
-- `npm run doctor` — validates a fresh host (prereqs + env + MCP connectivity)
+---
 
-The older bootstrap script flow is kept here for reference, but the documented OpenClaw path above is the **source of truth** going forward.
+## Fastest setup (OpenClaw)
 
-### Option A: one-shot bootstrap (legacy / host-centric)
+If you’re running this **inside OpenClaw**, use the OpenClaw-native path:
 
-If you’re on a generic host and want to bootstrap without OpenClaw-specific steps, you can still use the legacy script:
+1) Follow: `docs/setup-openclaw.md`
+2) Verify required skills: `docs/required-skills.md`
+3) Validate host health:
 
 ```bash
-bash -c "curl -sSf https://raw.githubusercontent.com/lascalasecurity/Jarvis-secops/main/scripts/bootstrap.sh -o /tmp/secops-bootstrap.sh && chmod +x /tmp/secops-bootstrap.sh && /tmp/secops-bootstrap.sh"
+npm run doctor
 ```
 
-This will:
-- Clone (or reuse) the repo at `~/security-lab`
-- Run `npm install`
-- Create `mcp/.env.local` with placeholders for your keys
-- Install + enable the `secops-dashboard` user service
-- Try to apply the bundled cron config from `docs/cron-jobs.json`
+This is the **source of truth** setup path.
 
-You then:
-- Edit `~/security-lab/mcp/.env.local` with your own API keys
-- Visit `http://127.0.0.1:18888` for the dashboard
-- Run `openclaw cron list` to confirm `security-lab:*` jobs
+---
 
-### Option B: manual setup
+## Manual setup (non-OpenClaw)
 
-1) Install deps:
+### Prereqs
+- Node.js (LTS recommended)
+- `npm install`
+- SentinelOne Purple + TI credentials (stored locally)
+
+### 1) Install dependencies
 ```bash
 npm install
 ```
 
-2) Configure keys (local-only):
+### 2) Configure keys (local-only)
 ```bash
 cp mcp/.env.local.example mcp/.env.local
 # edit mcp/.env.local and add your keys
 ```
 
-3) Smoke test MCP:
+### 3) Smoke test MCP connectivity
 ```bash
 set -a && source mcp/.env.local && set +a
 npx -y mcporter --config config/mcporter.json list-tools
 npx -y mcporter --config config/mcporter.json call purple-mcp.list_alerts first=1
 ```
 
-4) Run the dashboard:
+### 4) Run the dashboard
 ```bash
 npm run dashboard
 # http://127.0.0.1:18888
 ```
 
-## Docs
+### 5) (Optional) Apply scheduled jobs
+Cron job definitions live at:
+- `docs/cron-jobs.json`
 
-- `docs/AGENTS.md` — roles, schedules, artifact contracts
-- `docs/SETUP.md` — clone-and-run instructions (keys, smoke tests, dashboard)
-- `docs/ARCHITECTURE-diagram.html` — point-in-time architecture diagram
+How you apply these depends on your scheduler/runtime (OpenClaw Gateway cron vs system cron). If you’re using OpenClaw, follow `docs/setup-openclaw.md`.
+
+---
+
+## Repo map (where to look)
+
+- `agents/` — collectors + agent runners
+- `artifacts/cron/` — **all outputs** (dashboard reads from here)
+- `dashboard/` — local dashboard server + static UI
+- `config/` — MCPorter config + cron prompt templates
+- `docs/` — setup + architecture + agent contracts
+- `scripts/` — janitor / health / utility scripts
+
+---
+
+## Docs (recommended reading order)
+
+1) `docs/setup-openclaw.md` — best path if you’re using OpenClaw
+2) `docs/SETUP.md` — clone-and-run instructions (keys, smoke tests, dashboard)
+3) `docs/AGENTS.md` — roles, schedules, artifact contracts
+4) `docs/ARCHITECTURE.md` + `docs/ARCHITECTURE-diagram.html` — how the pieces fit
+
+---
 
 ## Security / secrets
 
@@ -88,3 +112,11 @@ npm run dashboard
   - `mcp/.env.local`
   - `mcp/servers.local.json`
   - `artifacts/**`, `runs/**`, `logs/**`
+
+---
+
+## Legacy bootstrap (discouraged)
+
+An older “curl | bash” bootstrap flow exists for reference, but it’s not the preferred setup path:
+
+- `docs/setup-openclaw.md` is the supported route.
