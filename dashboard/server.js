@@ -472,10 +472,15 @@ app.get('/api/agent/:agent/runs', async (req, res) => {
   try {
     const agent = req.params.agent;
     const agentDir = path.join(ARTIFACTS_ROOT, agent);
-    const runs = await listDirs(agentDir);
+
+    // Only expose directories that look like real run stamps.
+    // This prevents stray folders like "test" from showing up in the runs list.
+    const runs = (await listDirs(agentDir)).filter((d) => guessRunTimestamp(d));
+
     // Sort newest first and only expose the last 15 runs to the UI to keep things manageable.
     runs.sort().reverse();
     const limited = runs.slice(0, 15);
+
     res.json({
       ok: true,
       agent,

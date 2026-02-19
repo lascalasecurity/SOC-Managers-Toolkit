@@ -105,10 +105,27 @@ function main() {
 
     for (const dir of subdirs) {
       const stampDate = parseStamp(dir);
+
+      // Hard-delete known-bad/legacy artifact folders that should never exist.
+      // This prevents dashboard noise and avoids the janitor getting stuck on "unrecognized stamp".
       if (!stampDate) {
-        log(`  [${agent}] skipping ${dir} (unrecognized stamp)`);
+        if (agent === 'security-analyst' && dir === 'test') {
+          const fullPath = path.join(agentDir, dir);
+          log(`  [${agent}] deleting ${dir} (legacy test artifacts folder)`);
+          if (!dryRun) {
+            try {
+              rmrf(fullPath);
+              totalDeletedDirs++;
+            } catch (e) {
+              log(`  [${agent}] ERROR deleting ${dir}: ${e.message}`);
+            }
+          }
+        } else {
+          log(`  [${agent}] skipping ${dir} (unrecognized stamp)`);
+        }
         continue;
       }
+
       const ageDays = daysAgo(stampDate);
       if (ageDays <= retentionDays) {
         continue;
