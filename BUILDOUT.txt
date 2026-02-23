@@ -1,0 +1,364 @@
+SOC Manager’s Toolkit (security-lab) — Buildout Documentation
+Generated: 2026-02-23
+
+
+1) What this is
+--------------
+This repository is a local-only SecOps lab (“SOC Manager’s Toolkit”) built on OpenClaw + MCP.
+
+Core design goal: artifacts-first observability.
+- The system produces durable, auditable outputs under: artifacts/cron/...
+- Chat notifications are a convenience layer; the file artifacts are the source of truth.
+
+The lab runs a small fleet of reasoning-first SecOps agents on a schedule (cron), backed by
+optional deterministic Node.js “collector” helpers that pull raw data from SentinelOne Purple and
+write stable JSON snapshots.
+
+
+2) High-level architecture
+--------------------------
+At a high level, the system has four layers:
+
+A) Scheduler + agent runtime (OpenClaw Gateway cron)
+- OpenClaw Gateway runs cron jobs.
+- Each cron job triggers an isolated “agentTurn” with a specific prompt (config/cron/*.prompt.txt).
+- Jobs are defined declaratively in: config/gateway-cron.json
+
+B) Tool access (MCP via MCPorter)
+- The agents do not call SentinelOne directly.
+- They call MCP tools, routed via MCPorter (npx mcporter) using: config/mcporter.json
+
+MCP servers used in this build:
+- purple-mcp: SentinelOne Purple AI MCP Server (read-only)
+- ti-aggregator: local Node MCP server that normalizes TI/enrichment across multiple sources
+
+C) Deterministic collectors (Node.js helper runners)
+- Collectors run with --mode collect and write raw snapshots to artifacts/.
+- Reasoning agents then read those snapshots for triage/prioritization.
+
+D) Outputs and presentation
+- All outputs land in artifacts/cron/<agent>/<run-stamp>/...
+- A local dashboard reads artifacts and renders an at-a-glance view:
+  http://127.0.0.1:18888
+
+
+3) Repository layout (important paths)
+-------------------------------------
+Top-level:
+- agents/               Agent directories; includes helper runners (collector scripts)
+- artifacts/            Durable evidence store (all outputs, plus dashboard input)
+- config/               MCPorter config + cron prompt files + cron spec
+- dashboard/            Local dashboard server + UI
+- docs/                 Architecture + setup + agent contracts
+- logs/                 Local logs (janitor log, etc.)
+- scripts/              Utility scripts (cron spec generation, janitor cleanup)
+- mcp/                  MCP server configs + local ti-aggregator implementation
+
+Operationally important files:
+- config/gateway-cron.json
+  Source-of-truth cron topology for OpenClaw Gateway.
+- config/cron/*.prompt.txt
+  The prompts used by each scheduled agentTurn.
+- scripts/cleanup-artifacts.mjs
+  Daily janitor: artifact retention cleanup.
+
+
+4) Cron topology (what runs when)
+--------------------------------
+Cron jobs are defined in config/gateway-cron.json.
+Current implemented jobs (PT / America/Los_Angeles):
+
+- security-lab:security-analyst:30m
+  Schedule: */30 * * * *
+  Purpose: alert snapshot + triage summary
+
+- security-lab:ti-digest:daily-0500
+  Schedule: 0 5 * * *
+  Purpose: daily TI digest + machine-readable IOC feed
+
+- security-lab:proactive-threat-hunter:collector-daily-0505
+  Schedule: 5 5 * * *
+  Purpose: select/prepare a high-value subset of TI IOCs for hunting
+
+- security-lab:vuln-manager:daily-0700
+  Schedule: 0 7 * * *
+  Purpose: vulnerability posture snapshot + prioritized remediation
+
+- security-lab:threat-hunter:weekly-mon-0800
+  Schedule: 0 8 * * 1
+  Purpose: reactive/alert-driven hunting (hypotheses -> PowerQuery)
+
+- security-lab:proactive-threat-hunter:weekly-mon-0800
+  Schedule: 0 8 * * 1
+  Purpose: TI-driven hunting (IOCs -> PowerQuery)
+
+- security-lab:soc-manager:daily-0830
+  Schedule: 30 8 * * *
+  Purpose: daily exec overview + cross-agent consistency readout
+
+- security-lab:soc-manager:weekly-overview
+  Schedule: 0 9 * * 1
+  Purpose: weekly exec overview + QA/corrections layer
+
+- security-lab:janitor:artifact-cleanup-daily-0300
+  Schedule: 0 3 * * *
+  Purpose: enforce artifact retention policies
+
+Delivery mode:
+- Most jobs deliver an “announce” summary to the last active channel, best-effort.
+- Even when delivery is unreliable, artifacts are still written and the dashboard updates.
+
+
+5) Agent roles and how they work together
+-----------------------------------------
+The fleet is designed as separation of duties:
+- Security Analyst: operational alert queue triage
+- TI Analyst: external intel -> curated feed
+- Vuln Manager: vuln posture -> prioritized remediation
+- Threat Hunter: reactive hunts based on what the environment is already showing
+- Proactive Threat Hunter: proactive hunts based on new TI (even if no alert exists)
+- SOC Manager: executive summary + QA to keep the system honest
+- Janitor: hygiene (retention)
+
+SOC Manager is intentionally “meta”:
+- It reads the latest artifacts from the other agents.
+- It highlights mismatches (e.g., TI says something is important but vulns show no exposure).
+- It calls out confidence gaps (e.g., pagination limits, missing pivots).
+
+This is how the system avoids “agent hallucination drift”: the QA agent is explicitly tasked with
+cross-checking conclusions against the underlying evidence artifacts.
+
+
+6) Deterministic collector helpers (Node.js runners)
+----------------------------------------------------
+Collectors exist to make the system:
+- reproducible (same query -> same JSON shape)
+- auditable (raw snapshots saved)
+- cheaper/faster (do collection once, reason over files)
+
+The collectors run under Node.js and use MCPorter to call MCP tools.
+Typical invocation pattern (IMPORTANT: env must be loaded in the same shell):
+
+  cd /home/orchestrator/.openclaw/workspace/security-lab \
+    && set -a && source mcp/.env.local && set +a \
+    && node agents/<agent>/runner.js --mode collect
+
+Current collector examples:
+- agents/security-analyst/runner.js --mode collect
+  Writes: artifacts/cron/security-analyst/<YYYYMMDD-HHMM>/alerts.json
+  Source: purple-mcp.list_alerts
+
+- agents/vuln-manager/runner.js --mode collect
+  Writes: artifacts/cron/vuln-manager/<YYYYMMDD>/vulnerabilities.raw.json
+  Source: purple-mcp.list_vulnerabilities
+
+- agents/threat-hunter/runner.js --mode collect
+  Writes: artifacts/cron/threat-hunter/<YYYYMMDD>/alerts.raw.json
+  Source: purple-mcp.list_alerts + a derived 7-day time window
+
+- agents/ti-analyst/runner.js --mode collect --limit 100
+  Writes: artifacts/cron/ti-digest/<YYYYMMDD>/ti_iocs.json
+  Source: external TI feeds via ti-aggregator (e.g., CISA KEV + AlienVault OTX)
+
+Collectors do not perform “judgment.”
+They should not:
+- decide verdicts
+- close alerts
+- suppress detections
+They just gather and normalize evidence.
+
+
+7) Reasoning agents (what they do beyond collection)
+----------------------------------------------------
+Reasoning agents are the scheduled OpenClaw “agentTurn” jobs.
+They:
+- read the latest collector artifacts (alerts/vulns/ti feeds)
+- optionally pivot deeper via Purple MCP tools
+- produce:
+  - a human summary (chat)
+  - a durable report.md and supporting JSON outputs
+
+Common reasoning workflow pattern:
+1) Load the latest raw snapshot from artifacts/cron/...
+2) Select a small number of high-signal items
+3) Pivot deeper (Purple MCP: get_alert/history/notes; PowerQuery)
+4) Enrich IOCs with TI (ti-aggregator)
+5) Write a narrative report + structured outputs
+
+This pattern keeps the system “evidence led” and limits noise.
+
+
+8) Artifact contracts (what gets written where)
+----------------------------------------------
+Artifacts are organized by agent and run timestamp/date:
+
+- artifacts/cron/security-analyst/<YYYYMMDD-HHMM>/
+  - alerts.json
+  - (optional) focused_alerts.json
+  - (optional) enrichment.json
+  - (optional) report.md
+
+- artifacts/cron/ti-digest/<YYYYMMDD>/
+  - ti_iocs.json (machine-readable feed)
+  - digest.md (curated human digest)
+
+- artifacts/cron/vuln-manager/<YYYYMMDD>/
+  - vulnerabilities.raw.json
+  - (optional) prioritized.json
+  - (optional) changes.json
+  - (optional) report.md
+  - artifacts/cron/vuln-manager/last.json (state for diffs)
+
+- artifacts/cron/threat-hunter/<YYYYMMDD>/
+  - alerts.raw.json
+  - hypotheses.json
+  - powerqueries.json
+  - report.md
+
+- artifacts/cron/proactive-hunter/<YYYYMMDD>/
+  - ti_iocs.selected.json
+  - powerqueries.json
+  - hunts.json
+  - report.md
+
+- artifacts/cron/soc-manager/<YYYYMMDD>/
+  - overview-daily.md (daily)
+  - overview.md (weekly)
+
+The dashboard discovers these directories and renders the latest state.
+
+
+9) Tools and integrations (MCP)
+-------------------------------
+9.1 Purple MCP (SentinelOne)
+- Exposes read-only access to SentinelOne Purple services:
+  - Purple AI (purple_ai)
+  - Data lake PowerQuery (powerquery)
+  - Alerts (get/list/search + notes/history)
+  - Vulnerabilities (get/list/search + notes/history)
+  - Misconfigurations (get/list/search + notes/history)
+  - Inventory (get/list/search)
+
+Key property: read-only.
+- Purple MCP explicitly does NOT allow write-backs (no closing alerts, no setting verdicts).
+
+9.2 TI Aggregator MCP (local)
+- A local Node MCP server in: mcp/ti-aggregator/
+- Normalizes enrichment outputs to a consistent schema:
+  - verdict: malicious | suspicious | unknown | benign
+  - scores/evidence/rawRefs
+- Feeds include (as configured/available): CISA KEV and AlienVault OTX at minimum; optional
+  providers can be enabled with API keys (VirusTotal, GreyNoise, AbuseIPDB, etc.).
+
+9.3 MCPorter
+- The local router that brokers calls to MCP servers.
+- Configuration lives in: config/mcporter.json
+
+
+10) Dashboard
+-------------
+The dashboard is a local-only UI intended for:
+- at-a-glance state
+- quick navigation to latest artifacts
+- visibility even when chat delivery is unreliable
+
+Run:
+  npm run dashboard
+
+Open:
+  http://127.0.0.1:18888
+
+Data source:
+- The dashboard reads files from artifacts/cron/** and renders:
+  - per-agent tiles
+  - latest reports/digests
+  - basic run health
+
+
+11) Retention / Janitor
+-----------------------
+A daily janitor enforces artifact retention policies.
+Script:
+- scripts/cleanup-artifacts.mjs
+
+Cron:
+- security-lab:janitor:artifact-cleanup-daily-0300
+
+Retention defaults (AGENT_RETENTION_DAYS):
+- security-analyst: 60 days
+- ti-digest: 90 days
+- vuln-manager: 90 days
+- soc-manager: 90 days
+- threat-hunter: 90 days
+- proactive-hunter: 90 days
+
+The janitor:
+- parses run stamps like YYYYMMDD or YYYYMMDD-HHMM
+- deletes directories older than retention
+- writes logs to: logs/cleanup-artifacts.log
+
+
+12) Operational guardrails / safety
+-----------------------------------
+The lab is intentionally conservative:
+- Purple MCP is read-only.
+- The system is designed to recommend actions, not take destructive actions.
+- “Quiet hours” behavior is supported for noisy alert triage runs (collect-only / no paging).
+- Artifact-first logging provides an audit trail for investigations.
+
+Key implementation note: environment loading.
+- Any command that needs MCP credentials must source mcp/.env.local in the same shell.
+- This is called out in docs and should be reinforced in each cron prompt.
+
+
+13) Known limitations (current)
+-------------------------------
+- Alert/vuln listing APIs are paginated; collector snapshots often capture only the first page.
+  This is why many summaries call counts a “minimum observed” unless additional pagination is
+  implemented.
+
+- Some alerts may not contain enough pivotable detail via get_alert to reliably scope PowerQueries
+  to a specific host/storyline without additional enrichment templates.
+
+- The current system does not perform write-backs to SentinelOne (status changes, verdicts,
+  suppression), by design.
+
+
+14) How to deploy on a fresh OpenClaw host (summary)
+----------------------------------------------------
+Reference: docs/setup-openclaw.md
+
+Quick path:
+1) Clone repo into ~/.openclaw/workspace/security-lab
+2) npm install
+3) Create and fill: mcp/.env.local
+4) Ensure Purple MCP can run (uvx) and keys are correct
+5) Apply cron spec from config/gateway-cron.json into OpenClaw Gateway
+6) Start dashboard (optional): npm run dashboard
+7) Validate artifacts appear under artifacts/cron/**
+
+
+15) Where to look for “the truth” during demos
+----------------------------------------------
+For demonstrations and audits, these paths are the anchors:
+- artifacts/cron/security-analyst/<STAMP>/alerts.json
+- artifacts/cron/ti-digest/<YYYYMMDD>/digest.md
+- artifacts/cron/vuln-manager/<YYYYMMDD>/report.md
+- artifacts/cron/proactive-hunter/<YYYYMMDD>/powerqueries.json
+- artifacts/cron/soc-manager/<YYYYMMDD>/overview-daily.md (or overview.md)
+
+If chat delivery fails or is incomplete, the artifacts still capture what happened.
+
+
+Appendix A: Further reading in this repo
+---------------------------------------
+- docs/AGENTS.md
+  Roles, schedules, artifact contracts.
+- docs/setup-openclaw.md
+  OpenClaw-first deployment flow.
+- docs/SETUP.md
+  Clone-and-run instructions + smoke tests.
+- docs/ARCHITECTURE-diagram.html
+  Visual architecture diagram.
+- docs/RUNBOOKS/*.yaml
+  Example runbooks (how we intend to operationalize specific workflows).
