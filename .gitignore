@@ -21,3 +21,6 @@ memory/
 
 # Cron artifacts (generated)
 artifacts/cron/
+
+# Local temp scratch
+tmp/

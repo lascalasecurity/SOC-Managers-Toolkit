@@ -39,25 +39,108 @@ async function main() {
   const stateDir = path.join(CWD, 'artifacts', 'cron', 'vuln-manager');
   ensureDir(outDir);
 
-  // Pull vulnerabilities (collector behavior is always the first step)
-  const list = await mcporterCall({
-    cwd: CWD,
-    tool: 'purple-mcp.list_vulnerabilities',
-    // NOTE: Purple MCP may reject pagination args like `first`; rely on server default.
-    args: {},
-    output: 'json',
-    timeoutMs: 120000
-  });
+  function mkFilters(arr) {
+    // purple-mcp expects `filters` to be a STRING containing JSON (array of filters).
+    return JSON.stringify(arr);
+  }
 
-  const listJson = JSON.parse(list.stdout);
+  async function searchAll({ filtersArr, first = 100, maxPages = 10 }) {
+    const edges = [];
+    let after = null;
+    let pageInfo = null;
+    let last = null;
+    for (let page = 0; page < maxPages; page++) {
+      const res = await mcporterCall({
+        cwd: CWD,
+        tool: 'purple-mcp.search_vulnerabilities',
+        args: {
+          filters: mkFilters(filtersArr),
+          first,
+          after
+        },
+        output: 'json',
+        timeoutMs: 120000
+      });
+
+      let j;
+      try {
+        j = JSON.parse(res.stdout);
+      } catch {
+        const head = String(res.stdout || '').slice(0, 200);
+        throw new Error(`purple-mcp.search_vulnerabilities returned non-JSON output (first 200 chars): ${head}`);
+      }
+
+      last = j;
+      const newEdges = j?.edges ?? [];
+      edges.push(...newEdges);
+      pageInfo = j?.page_info ?? null;
+
+      if (!pageInfo?.has_next_page) break;
+      after = pageInfo?.end_cursor;
+      if (!after) break;
+      if (newEdges.length === 0) break;
+    }
+
+    return {
+      edges,
+      page_info: pageInfo,
+      total_count: Number(last?.total_count ?? last?.totalCount ?? edges.length),
+      paged: true
+    };
+  }
+
+  async function getCount({ filtersArr }) {
+    const res = await mcporterCall({
+      cwd: CWD,
+      tool: 'purple-mcp.search_vulnerabilities',
+      args: {
+        filters: mkFilters(filtersArr),
+        first: 1,
+        after: null
+      },
+      output: 'json',
+      timeoutMs: 120000
+    });
+    const j = JSON.parse(res.stdout);
+    return Number(j?.total_count ?? j?.totalCount ?? (j?.edges?.length ?? 0));
+  }
+
+  // Collector behavior: capture posture counts + a bounded working set for prioritization.
+  const baseStatus = [{ fieldId: 'status', filterType: 'string_equals', value: 'NEW' }];
+  const severities = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW', 'UNKNOWN'];
+  const countsBySeverity = {};
+  for (const sev of severities) {
+    countsBySeverity[sev] = await getCount({
+      filtersArr: [...baseStatus, { fieldId: 'severity', filterType: 'string_equals', value: sev }]
+    });
+  }
+
+  const topSetFilters = [
+    ...baseStatus,
+    { fieldId: 'severity', filterType: 'string_in', values: ['CRITICAL', 'HIGH'] }
+  ];
+
+  const topSet = await searchAll({ filtersArr: topSetFilters, first: 100, maxPages: 10 }); // max 1000 rows
+
+  const listJson = {
+    generatedAt: new Date().toISOString(),
+    query: {
+      status: 'NEW',
+      severitiesCounted: severities,
+      topSet: { severities: ['CRITICAL', 'HIGH'], maxRows: topSet.edges.length }
+    },
+    countsBySeverity,
+    topSet
+  };
+
   writeJson(path.join(outDir, 'vulnerabilities.raw.json'), listJson);
 
   if (mode === 'collect') {
-    process.stdout.write(`Collected vulnerabilities to ${path.relative(CWD, outDir)}/vulnerabilities.raw.json\n`);
+    process.stdout.write(`Collected vulnerability posture to ${path.relative(CWD, outDir)}/vulnerabilities.raw.json (counts + topSet sample)\n`);
     return;
   }
 
-  const edges = listJson?.edges ?? [];
+  const edges = listJson?.topSet?.edges ?? [];
   const vulns = edges.map((e) => e.node).filter(Boolean);
   const summarized = vulns.map(summarizeVuln);
 
