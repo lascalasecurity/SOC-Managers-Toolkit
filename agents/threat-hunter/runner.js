@@ -21,12 +21,12 @@ async function main() {
   const outDir = path.join(CWD, 'artifacts', 'cron', 'threat-hunter', ymd);
   ensureDir(outDir);
 
-  // last 7 days (168h) by default
-  const range = await getTimestampRange({ cwd: CWD, hours: 24 * 7 });
+  // last 24 hours by default (daily hunts)
+  const range = await getTimestampRange({ cwd: CWD, hours: 24 });
 
   // getTimestampRange() returns { startMs, endMs, startIso, endIso, raw }
   // Prefer Purple-derived bounds; fall back to local time if Purple returns nothing usable.
-  const startMs = typeof range?.startMs === 'number' ? range.startMs : (Date.now() - 24 * 7 * 60 * 60 * 1000);
+  const startMs = typeof range?.startMs === 'number' ? range.startMs : (Date.now() - 24 * 60 * 60 * 1000);
   const endMs = typeof range?.endMs === 'number' ? range.endMs : Date.now();
 
   const window = {
@@ -116,8 +116,8 @@ async function main() {
   writeJson(path.join(outDir, 'purple_ai.json'), ai);
 
   let md = '';
-  md += `Threat Hunter — weekly — ${ymd} PT\n`;
-  md += `Alerts searched (7d): ${alerts.length} (sampled ${sampled.length})\n`;
+  md += `Threat Hunter — daily (24h) — ${ymd} PT\n`;
+  md += `Alerts searched (24h): ${alerts.length} (sampled ${sampled.length})\n`;
   md += `Extracted IOCs: ${iocs.length}\n\n`;
   md += `Purple AI hunt report (direct hunt over environment, no local PowerQuery execution):\n`;
   md += (ai.text ? ai.text : JSON.stringify(ai, null, 2)) + '\n\n';

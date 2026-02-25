@@ -19,7 +19,7 @@ You can use Purple MCP tools:
 
 ## Goal (each run)
 
-Treat this as a **weekly TI-driven hunt run**:
+Treat this as a **daily TI-driven hunt run**:
 - Take the latest TI IOCs (via TI Digest + Proactive Hunter collector).
 - Design a **small number of high-value hunts** in Purple.
 - Execute them.
@@ -58,7 +58,7 @@ Treat this as a **weekly TI-driven hunt run**:
 4. **Use Purple AI / PowerQuery helpers as needed**
    - When helpful, call `purple-mcp.purple_ai` to refine what to look for (tables, filters, parent/child process logic).
    - For actual execution, use `purple-mcp.powerquery` with:
-     - A clearly bounded **time window** (e.g., 7 days, or smaller slices when timeouts occur).
+     - A clearly bounded **time window** (default **24 hours**, and smaller slices when timeouts occur).
      - Queries that are specific to the behaviors you are hunting for, not just generic telemetry.
 
 5. **Execute hunts and record results**
