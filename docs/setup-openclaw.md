@@ -1,4 +1,4 @@
-# SecOps Lab — OpenClaw Setup Guide
+# SOC Manager’s Toolkit — OpenClaw Setup Guide
 
 Goal: make this repo deployable on any machine running OpenClaw so your agent can spin up the full SecOps lab (agents, crons, dashboard) with minimal human glue.
 

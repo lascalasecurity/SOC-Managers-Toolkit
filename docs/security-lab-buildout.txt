@@ -1,4 +1,4 @@
-SOC Manager’s Toolkit (security-lab) — Buildout Documentation
+SOC Manager’s Toolkit — Buildout Documentation
 Generated: 2026-02-23
 
 

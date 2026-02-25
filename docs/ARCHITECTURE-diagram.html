@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Jarvis SecOps Lab - Architecture Diagram</title>
+  <title>SOC Manager’s Toolkit - Architecture Diagram</title>
   <style>
     body {
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -74,9 +74,9 @@
   </style>
 </head>
 <body>
-  <h1>Jarvis SecOps Lab &mdash; Architecture Diagram (Point-in-Time)</h1>
+  <h1>SOC Manager’s Toolkit &mdash; Architecture Diagram (Point-in-Time)</h1>
   <p>
-    Visual map of the current Jarvis SecOps lab: agents, JS helpers, MCP servers, cron wiring, and
+    Visual map of the current SOC Manager’s Toolkit: agents, JS helpers, MCP servers, cron wiring, and
     artifact flows. This is a point-in-time snapshot; update it as wiring or behavior changes.
   </p>
 
@@ -111,7 +111,7 @@
 |    (Node.js, optional; agents may invoke with `--mode collect`)                  |
 |  - security-analyst/runner.js --mode collect   → alerts.json                     |
 |  - vuln-manager/runner.js       --mode collect → vulnerabilities.raw.json        |
-|  - threat-hunter/runner.js      --mode collect → alerts.raw.json (7d window)     |
+|  - threat-hunter/runner.js      --mode collect → alerts.raw.json (24h window)    |
 +----------------------------------------------------------------------------------+
               |                               |
               | normalized artifacts          | raw TI / hunts                      
@@ -246,7 +246,7 @@ Threat Hunter agentTurn (isolated)
   │         │
   │         └─&gt; <code>alerts.raw.json</code> → <code>artifacts/cron/threat-hunter/&lt;YYYYMMDD&gt;/</code>
   │
-  ├─&gt; Load <code>alerts.raw.json</code> (7d window + alerts)
+  ├─&gt; Load <code>alerts.raw.json</code> (24h window + alerts)
   │
   ├─&gt; Derive 2–5 alert-driven hypotheses:
   │      ├─ lateral movement from host(s) in alerts

@@ -1,4 +1,4 @@
-# SOC Manager’s Toolkit (security-lab)
+# SOC Manager’s Toolkit
 
 A **local-only** SecOps lab for *autonomous security operations*:
 
