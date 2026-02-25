@@ -34,7 +34,9 @@ A **local-only** SecOps lab for *autonomous security operations*:
 ## Fastest setup (OpenClaw)
 
 If you’re running this **inside OpenClaw**, use the OpenClaw-native path:
+
 *Tip* Give your OpenClaw agent this Repo URL. It should be able to handle everything from there. You may need to help guide it, and you will need to provide keys, but all the instructions are geared for your OpenClaw agent to follow. *Tip*
+
 1) Follow: `docs/setup-openclaw.md`
 2) Verify required skills: `docs/required-skills.md`
 3) Validate host health:
