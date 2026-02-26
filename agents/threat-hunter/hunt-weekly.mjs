@@ -107,6 +107,13 @@ function logStep(msg) {
 
 logStep(`Starting hunt: hypotheses=${hypotheses.length} window=${window.startIso}..${window.endIso} host=${primaryHost ?? '<none>'}`);
 
+function isSdlOutage(err) {
+  const t = String(err || '');
+  return /\/sdl\/v2\/api\/queries|\b500\b|Internal Server Error/i.test(t);
+}
+
+let sdlOutage = false;
+
 for (const h of hypotheses) {
   logStep(`HYP ${h.id}: generating PowerQuery via purple_ai...`);
   const pqGen = await genPQ({ hypothesis: h });
@@ -124,11 +131,13 @@ for (const h of hypotheses) {
     run = { error: 'purple_ai returned non-query text or an error string', aiRaw: pqGen.aiRaw };
   } else {
     try {
-      run = await runPowerQuery({ cwd: CWD, query: pqGen.powerquery, startIso: window.startIso, endIso: window.endIso });
+      run = await runPowerQuery({ cwd: CWD, query: pqGen.powerquery, startIso: window.startIso, endIso: window.endIso, retries: 2, timeoutMs: 60000 });
     } catch (e) {
       run = { error: String(e?.message || e) };
     }
   }
+
+  if (run?.error && isSdlOutage(run.error)) sdlOutage = true;
 
   const rows = Array.isArray(run?.rows) ? run.rows : (Array.isArray(run?.data) ? run.data : null);
   const rowCount = rows ? rows.length : null;
@@ -136,6 +145,11 @@ for (const h of hypotheses) {
   logStep(`HYP ${h.id}: done → ${status}`);
 
   results.push({ hypothesis_id: h.id, query: pqGen.powerquery, result: run, rowCount });
+
+  if (sdlOutage) {
+    logStep('SDL/PowerQuery appears unhealthy (HTTP 5xx). Stopping early to avoid timeouts/noise.');
+    break;
+  }
 }
 
 logStep('Hunt complete; writing artifacts...');

@@ -76,6 +76,13 @@ async function main() {
 
   logStep(`Starting hunts: window=${startIso}..${endIso} domains=${parsed.domains.length} ips=${parsed.ips.length} hashes=${parsed.hashes.length}`);
 
+  function isSdlOutage(err) {
+    const t = String(err || '');
+    return /\/sdl\/v2\/api\/queries|\b500\b|Internal Server Error/i.test(t);
+  }
+
+  let sdlOutage = false;
+
   async function genAndRun({ id, description, scopeText, aiHint, maxRows = 200 }) {
     logStep(`${id}: generating PowerQuery via purple_ai...`);
     // Use Purple AI to generate a PowerQuery that is compatible with the current Purple schema.
@@ -106,12 +113,16 @@ async function main() {
     let run = { status: 'error', error: 'empty/invalid query', rows: [] };
     if (!bad) {
       try {
-        run = await runPowerQuery({ cwd: CWD, query: pq, startIso, endIso });
+        run = await runPowerQuery({ cwd: CWD, query: pq, startIso, endIso, retries: 2, timeoutMs: 45000 });
       } catch (e) {
         run = { status: 'error', error: String(e?.message || e) };
       }
     } else {
       run = { status: 'error', error: 'purple_ai did not return runnable PowerQuery text', aiRaw: ai };
+    }
+
+    if (run?.error && isSdlOutage(run.error)) {
+      sdlOutage = true;
     }
 
     const rows = Array.isArray(run?.rows) ? run.rows : (Array.isArray(run?.data) ? run.data : []);
@@ -141,7 +152,7 @@ async function main() {
   }
 
   // Only run hunts for non-CVE indicators (CVEs are handled via exposure/patch workflows, not telemetry hunts here).
-  if (parsed.domains.length) {
+  if (parsed.domains.length && !sdlOutage) {
     await genAndRun({
       id: 'hunt_dns_domain_sightings',
       description: 'DNS/proxy sightings for TI domains (possible infostealer infra)',
@@ -150,7 +161,7 @@ async function main() {
     });
   }
 
-  if (parsed.ips.length) {
+  if (parsed.ips.length && !sdlOutage) {
     await genAndRun({
       id: 'hunt_outbound_ip_connections',
       description: 'Outbound network connections to TI IPs',
@@ -159,13 +170,17 @@ async function main() {
     });
   }
 
-  if (parsed.hashes.length) {
+  if (parsed.hashes.length && !sdlOutage) {
     await genAndRun({
       id: 'hunt_filehash_sightings',
       description: 'File/process hash sightings for TI hashes',
       scopeText: parsed.hashes.slice(0, 10).join(', '),
       aiHint: 'Search file hash fields for sha256/sha1/md5; include execution context.'
     });
+  }
+
+  if (sdlOutage) {
+    logStep('SDL/PowerQuery appears unhealthy (HTTP 5xx). Skipping remaining hunts to avoid timeouts/noise.');
   }
 
   // Write artifacts.
