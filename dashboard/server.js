@@ -401,8 +401,10 @@ async function getOverview() {
 
   const tiles = [];
   for (const a of agents) {
-    // Skip background/maintenance agents such as the Janitor; they should not appear as tiles.
+    // Skip background/maintenance agents; they should not appear as tiles.
     if (a === 'janitor') continue;
+    // Hidden utility tiles (keep artifacts, but don't clutter the UI).
+    if (a === 'purple-sdl-health') continue;
 
     const latest = await getLatestRun(a);
     tiles.push({
